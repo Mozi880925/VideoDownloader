@@ -1,0 +1,52 @@
+{
+  "name": "video-downloader",
+  "version": "1.0.0",
+  "description": "本地视频下载器桌面应用",
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm run vite\" \"npm run electron:dev\"",
+    "vite": "vite",
+    "electron:dev": "tsc -p tsconfig.electron.json && wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+    "build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "start": "electron .",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "wait-on": "^8.0.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.114",
+    "antd": "^5.22.3",
+    "better-sqlite3": "^11.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.local.videodownloader",
+    "productName": "VideoDownloader",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
