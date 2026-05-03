@@ -1,4 +1,4 @@
-import type { TaskStatus, TaskResult } from '../shared/types'
+import type { TaskStatus, TaskResult, NetworkTestResult, IpInfo } from '../shared/types'
 
 declare global {
   interface ElectronAPI {
@@ -162,6 +162,23 @@ declare global {
     subClearNewVideos: (channelId: string) => Promise<number>
     subSetInterval: (interval: CheckInterval) => Promise<void>
     onSubSchedulerTick: (callback: (info: { totalNew: number }) => void) => () => void
+
+    // 网络 / 代理
+    setProxy: (type: string, host?: string, port?: string, username?: string, password?: string) => Promise<void>
+    testNetwork: () => Promise<NetworkTestResult[]>
+    getIpInfo: () => Promise<IpInfo | null>
+
+    // 拖拽文件路径
+    getPathForFile: (file: File) => string
+
+    // 字幕提取
+    extractSubtitles: (url: string, outputDir: string, langs?: string) => Promise<{
+      status: 'success' | 'failed'
+      title?: string
+      duration?: number
+      srtPaths?: string[]
+      errorMessage?: string
+    }>
   }
 
   type CheckInterval = 'hourly' | '6h' | 'daily' | 'off'

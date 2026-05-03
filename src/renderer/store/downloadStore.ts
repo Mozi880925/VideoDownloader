@@ -134,6 +134,9 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       subscriptionCheckInterval: '6h',
       maxConcurrentDownloads: 3,
       folderOrganize: 'none',
+      proxyType: 'none',
+      proxyHost: '',
+      proxyPort: '',
     }
     try {
       const s = localStorage.getItem('vdownload_settings')

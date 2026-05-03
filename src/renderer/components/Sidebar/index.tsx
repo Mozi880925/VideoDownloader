@@ -7,6 +7,10 @@ import {
   InfoCircleOutlined,
   VideoCameraOutlined,
   BellOutlined,
+  GlobalOutlined,
+  AudioOutlined,
+  FileTextOutlined,
+  SoundOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
@@ -15,7 +19,11 @@ export type PageKey =
   | 'batch-download'
   | 'download-list'
   | 'subscriptions'
+  | 'transcription'
+  | 'subtitle-extract'
+  | 'whisper-config'
   | 'settings'
+  | 'network'
   | 'about'
 
 interface SidebarProps {
@@ -52,9 +60,36 @@ const menuItems: MenuProps['items'] = [
     label: '频道订阅',
   },
   {
+    key: 'subtitle-group',
+    icon: <AudioOutlined />,
+    label: '字幕和转录',
+    children: [
+      {
+        key: 'transcription',
+        icon: <SoundOutlined />,
+        label: 'AI 识别字幕',
+      },
+      {
+        key: 'subtitle-extract',
+        icon: <FileTextOutlined />,
+        label: '字幕提取',
+      },
+      {
+        key: 'whisper-config',
+        icon: <SettingOutlined />,
+        label: 'Whisper 配置',
+      },
+    ],
+  },
+  {
     key: 'settings',
     icon: <SettingOutlined />,
     label: '设置',
+  },
+  {
+    key: 'network',
+    icon: <GlobalOutlined />,
+    label: '网络',
   },
   {
     key: 'about',

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   DownloadOptions,
   DownloadProgress,
@@ -16,6 +16,8 @@ import type {
   NewVideoItem,
   CheckInterval,
   VideoListResult,
+  NetworkTestResult,
+  IpInfo,
 } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -239,4 +241,32 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('sub:scheduler-tick', handler)
     return () => ipcRenderer.removeListener('sub:scheduler-tick', handler)
   },
+
+  /** 应用代理设置（同步到 Electron session 和 yt-dlp） */
+  setProxy: (type: string, host?: string, port?: string, username?: string, password?: string): Promise<void> =>
+    ipcRenderer.invoke('set-proxy', type, host, port, username, password),
+
+  /** 测试各平台连通性 */
+  testNetwork: (): Promise<NetworkTestResult[]> =>
+    ipcRenderer.invoke('test-network'),
+
+  /** 获取当前 IP 信息 */
+  getIpInfo: (): Promise<IpInfo | null> =>
+    ipcRenderer.invoke('get-ip-info'),
+
+  /** 获取拖拽进来的 File 对象的本地绝对路径（Electron 32+ 必须用此方法） */
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
+
+  /** 字幕提取（使用 yt-dlp 仅下载字幕） */
+  extractSubtitles: (
+    url: string,
+    outputDir: string,
+    langs?: string,
+  ): Promise<{
+    status: 'success' | 'failed'
+    title?: string
+    duration?: number
+    srtPaths?: string[]
+    errorMessage?: string
+  }> => ipcRenderer.invoke('extract-subtitles', url, outputDir, langs),
 })

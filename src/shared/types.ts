@@ -31,6 +31,29 @@ export interface WhisperConfig {
 
 export type FolderOrganize = 'none' | 'by-date' | 'by-channel' | 'by-channel-date'
 
+export type ProxyType = 'none' | 'system' | 'http' | 'socks5'
+
+export interface NetworkTestResult {
+  name: string
+  url: string
+  success: boolean
+  latency: number   // ms，-1 = 超时/失败
+  statusCode?: number
+}
+
+export interface IpInfo {
+  ip: string
+  city: string
+  region: string
+  country_name: string
+  country_code: string   // 'US' / 'CN' ...
+  org: string            // 'AS3257 Gtt Communications Inc.'
+  asn: string
+  timezone: string
+  latitude: number
+  longitude: number
+}
+
 export interface AppSettings {
   defaultFormat: string
   downloadPath: string
@@ -42,6 +65,11 @@ export interface AppSettings {
   subscriptionCheckInterval?: CheckInterval
   maxConcurrentDownloads?: number  // 1-5，默认 3
   folderOrganize?: FolderOrganize  // 默认 'none'
+  proxyType?: ProxyType            // 默认 'none'
+  proxyHost?: string
+  proxyPort?: string
+  proxyUsername?: string
+  proxyPassword?: string
 }
 
 // yt-dlp 相关类型

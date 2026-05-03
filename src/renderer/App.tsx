@@ -5,7 +5,11 @@ import VideoDownload from './pages/VideoDownload'
 import BatchDownload from './pages/BatchDownload'
 import DownloadList from './pages/DownloadList'
 import Subscriptions from './pages/Subscriptions'
+import Transcription from './pages/Transcription'
+import SubtitleExtract from './pages/SubtitleExtract'
+import WhisperConfig from './pages/WhisperConfig'
 import Settings from './pages/Settings'
+import Network from './pages/Network'
 import About from './pages/About'
 import { useDownloadStore } from './store/downloadStore'
 
@@ -14,7 +18,11 @@ const pageMap: Record<PageKey, React.ReactNode> = {
   'batch-download': <BatchDownload />,
   'download-list': <DownloadList />,
   'subscriptions': <Subscriptions />,
+  'transcription': <Transcription />,
+  'subtitle-extract': <SubtitleExtract />,
+  'whisper-config': <WhisperConfig />,
   'settings': <Settings />,
+  'network': <Network />,
   'about': <About />,
 }
 
@@ -40,6 +48,14 @@ const App: React.FC = () => {
   useEffect(() => {
     const interval = useDownloadStore.getState().appSettings.subscriptionCheckInterval || '6h'
     window.api.subSetInterval(interval).catch(() => {})
+  }, [])
+
+  // 启动时同步代理设置到主进程
+  useEffect(() => {
+    const { proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword } = useDownloadStore.getState().appSettings
+    if (proxyType && proxyType !== 'none') {
+      window.api.setProxy(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword).catch(() => {})
+    }
   }, [])
 
   // 监听重新下载请求 → 自动切到单视频下载页

@@ -2,7 +2,9 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } fro
 import path from 'path'
 import fs from 'fs'
 import { registerDownloadHandlers } from './ipc/download'
-import { detectYtdlp, cancelParse, killAllActive, setCookiesPath, getYtdlpPathPublic, fetchVideoList } from './services/ytdlp'
+import { detectYtdlp, cancelParse, killAllActive, setCookiesPath, setProxyUrl, getYtdlpPathPublic, fetchVideoList, extractSubtitles } from './services/ytdlp'
+import { applySessionProxy, buildProxyUrl, testAllSites, getIpInfo } from './services/network'
+import type { ProxyType } from '../shared/types'
 import { extractFrames, ffmpegReady } from './services/ffmpeg'
 import { transcribeVideo, cancelTranscribe, killAllTranscribes, whisperReady } from './services/whisper'
 import {
@@ -237,6 +239,48 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('set-cookies-path', (_event, filePath: string) => {
     setCookiesPath(filePath)
+  })
+
+  // ---- 代理设置 ----
+  ipcMain.handle('set-proxy', async (_event, type: ProxyType, host?: string, port?: string, username?: string, password?: string) => {
+    try {
+      const proxyUrl = buildProxyUrl(type, host, port, username, password)
+      setProxyUrl(proxyUrl)
+      await applySessionProxy(type, host, port)
+      console.log(`[proxy] applied type=${type} url=${proxyUrl || '(none)'}`)
+    } catch (err) {
+      console.error('[proxy] apply failed:', err)
+    }
+  })
+
+  // ---- 网络连通性测试 ----
+  ipcMain.handle('test-network', async () => {
+    try {
+      return await testAllSites()
+    } catch (err) {
+      console.error('[network] test failed:', err)
+      return []
+    }
+  })
+
+  // ---- IP 信息 ----
+  ipcMain.handle('get-ip-info', async () => {
+    try {
+      return await getIpInfo()
+    } catch (err) {
+      console.error('[network] get ip info failed:', err)
+      return null
+    }
+  })
+
+  // ---- 字幕提取 ----
+  ipcMain.handle('extract-subtitles', async (_event, url: string, outputDir: string, langs?: string) => {
+    try {
+      return await extractSubtitles(url, outputDir, langs)
+    } catch (err) {
+      console.error('[ytdlp] extract subtitles failed:', err)
+      return { status: 'failed', errorMessage: String(err) }
+    }
   })
 
   // ---- YouTube 应用内登录 ----
