@@ -1,16 +1,77 @@
-import React, { useEffect } from 'react'
-import { Card, Form, Select, Switch, Button, message, Input } from 'antd'
-import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined } from '@ant-design/icons'
+import React, { useEffect, useState } from 'react'
+import { Card, Form, Select, Switch, Button, message, Input, InputNumber, Tag, Spin } from 'antd'
+import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, AudioOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { useDownloadStore } from '../../store/downloadStore'
+
+const SUB_LANG_OPTIONS = [
+  { value: 'zh', label: '中文（zh）' },
+  { value: 'zh-Hans', label: '简体中文（zh-Hans）' },
+  { value: 'zh-Hant', label: '繁体中文（zh-Hant）' },
+  { value: 'zh-CN', label: '中文简体-中国（zh-CN）' },
+  { value: 'zh-TW', label: '中文繁体-台湾（zh-TW）' },
+  { value: 'en', label: '英文（en）' },
+  { value: 'en-US', label: '英文-美国（en-US）' },
+  { value: 'ja', label: '日文（ja）' },
+  { value: 'ko', label: '韩文（ko）' },
+  { value: 'es', label: '西班牙文（es）' },
+  { value: 'fr', label: '法文（fr）' },
+  { value: 'de', label: '德文（de）' },
+  { value: 'ru', label: '俄文（ru）' },
+]
 
 const Settings: React.FC = () => {
   const [form] = Form.useForm()
   const appSettings = useDownloadStore(s => s.appSettings)
   const updateSettings = useDownloadStore(s => s.updateSettings)
+  const [ytdlpInfo, setYtdlpInfo] = useState<{ available: boolean; version: string } | null>(null)
+  const [ytdlpLoading, setYtdlpLoading] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [updateOutput, setUpdateOutput] = useState('')
+  const [updateResult, setUpdateResult] = useState<'updated' | 'latest' | null>(null)
 
   useEffect(() => {
     form.setFieldsValue(appSettings)
   }, [appSettings, form])
+
+  useEffect(() => {
+    setYtdlpLoading(true)
+    window.api.detectYtdlp().then((info) => {
+      setYtdlpInfo({ available: info.available, version: info.version })
+    }).catch(() => {}).finally(() => setYtdlpLoading(false))
+  }, [])
+
+  const handleUpdateYtdlp = async () => {
+    setUpdating(true)
+    setUpdateOutput('')
+    setUpdateResult(null)
+    try {
+      const result = await window.api.ytdlpUpdate()
+      if (result.success) {
+        const alreadyLatest = /is up to date/i.test(result.output)
+        const info = await window.api.detectYtdlp()
+        setYtdlpInfo({ available: info.available, version: info.version })
+        if (alreadyLatest) {
+          message.success(`已是最新版本${info.version ? ` (v${info.version})` : ''}`)
+          setUpdateResult('latest')
+        } else {
+          message.success(`已更新到最新版${info.version ? ` v${info.version}` : ''}`)
+          setUpdateResult('updated')
+        }
+        // 成功时清空黑色日志框，状态指示由小标签代替
+        setUpdateOutput('')
+        // 4 秒后淡出标签
+        setTimeout(() => setUpdateResult(null), 4000)
+      } else {
+        // 失败时保留输出方便排查
+        setUpdateOutput(result.output)
+        message.warning('更新可能未成功，请查看输出')
+      }
+    } catch {
+      message.error('更新失败')
+    } finally {
+      setUpdating(false)
+    }
+  }
 
   // 登录窗口关闭后，主进程推送新的 cookies 路径
   useEffect(() => {
@@ -56,6 +117,30 @@ const Settings: React.FC = () => {
     await window.api.openLogsFolder()
   }
 
+  const handleSelectWhisperExe = async () => {
+    const filePath = await window.api.selectFile([
+      { name: 'Whisper 可执行文件', extensions: ['exe'] },
+      { name: '所有文件', extensions: ['*'] },
+    ])
+    if (filePath) {
+      const current = form.getFieldValue('whisper') ?? {}
+      form.setFieldsValue({ whisper: { ...current, executablePath: filePath } })
+      updateSettings({ whisper: { ...appSettings.whisper!, ...current, executablePath: filePath } })
+    }
+  }
+
+  const handleSelectWhisperModel = async () => {
+    const filePath = await window.api.selectFile([
+      { name: 'Whisper 模型（ggml-*.bin）', extensions: ['bin'] },
+      { name: '所有文件', extensions: ['*'] },
+    ])
+    if (filePath) {
+      const current = form.getFieldValue('whisper') ?? {}
+      form.setFieldsValue({ whisper: { ...current, modelPath: filePath } })
+      updateSettings({ whisper: { ...appSettings.whisper!, ...current, modelPath: filePath } })
+    }
+  }
+
   return (
     <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
       <h2 style={{ fontSize: 24, fontWeight: 700, background: 'linear-gradient(90deg, #1677ff, #4096ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 24 }}>
@@ -99,6 +184,19 @@ const Settings: React.FC = () => {
             </Select>
           </Form.Item>
 
+          <Form.Item
+            label="文件夹整理方式"
+            name="folderOrganize"
+            extra="控制视频文件在平台子目录下的进一步归档方式，使用 yt-dlp 模板变量动态创建子目录。"
+          >
+            <Select>
+              <Select.Option value="none">不整理（所有文件放平台目录）</Select.Option>
+              <Select.Option value="by-date">按月份归档（平台 / 2025-03 / 文件）</Select.Option>
+              <Select.Option value="by-channel">按频道归档（平台 / 频道名 / 文件）</Select.Option>
+              <Select.Option value="by-channel-date">按频道+月份（平台 / 频道名 / 2025-03 / 文件）</Select.Option>
+            </Select>
+          </Form.Item>
+
           <Form.Item label="默认文件命名规则" name="namingRule" extra="决定下载保存的文件名格式。">
             <Select>
               <Select.Option value="%(extractor_key)s_%(uploader,creator,channel)s_%(title).50s_%(upload_date>%Y%m%d)s.%(ext)s">平台_作者_标题_日期</Select.Option>
@@ -109,6 +207,123 @@ const Settings: React.FC = () => {
 
           <Form.Item label="下载完成系统通知" name="enableNotification" valuePropName="checked">
             <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+          </Form.Item>
+
+          <Form.Item
+            label="批量下载最大并发数"
+            name="maxConcurrentDownloads"
+            extra="同时进行的最大下载任务数。建议 2-3，过高会占用带宽或触发平台限流。"
+          >
+            <InputNumber min={1} max={5} step={1} style={{ width: 120 }} addonAfter="个" />
+          </Form.Item>
+
+          <div style={{ borderTop: '1px dashed #eee', margin: '8px 0 16px' }} />
+
+          <Form.Item
+            label="默认下载字幕"
+            name={['subtitles', 'enabled']}
+            valuePropName="checked"
+            extra="开启后，下载视频时会同时拉取字幕文件。单个视频下载时仍可临时取消。"
+          >
+            <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+          </Form.Item>
+
+          <Form.Item
+            label="字幕语言"
+            name={['subtitles', 'languages']}
+            extra="可多选。yt-dlp 会按顺序匹配，某视频没有对应语言则跳过。"
+          >
+            <Select
+              mode="multiple"
+              options={SUB_LANG_OPTIONS}
+              placeholder="选择想要下载的字幕语言"
+              allowClear
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="包含自动字幕（YouTube 机翻）"
+            name={['subtitles', 'includeAuto']}
+            valuePropName="checked"
+            extra="YouTube 对没有人工字幕的视频会自动生成机翻字幕，开启后也会下载这类字幕。"
+          >
+            <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+          </Form.Item>
+
+          <Form.Item
+            label="转为 .srt 格式"
+            name={['subtitles', 'convertToSrt']}
+            valuePropName="checked"
+            extra="关闭则保留原始格式（通常是 .vtt）。"
+          >
+            <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+          </Form.Item>
+
+          <Form.Item
+            label="同时嵌入视频（软字幕轨道）"
+            name={['subtitles', 'embed']}
+            valuePropName="checked"
+            extra="写入到 mp4/mkv 的字幕轨道，播放器可切换。与独立 .srt 不冲突。"
+          >
+            <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+          </Form.Item>
+        </Form>
+      </Card>
+
+      <Card
+        bordered={false}
+        style={{ marginTop: 24, borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+        title={
+          <span>
+            <AudioOutlined style={{ marginRight: 6, color: '#1677ff' }} />
+            Whisper 语音转写
+          </span>
+        }
+      >
+        <p style={{ color: '#666', marginBottom: 16, fontSize: 13 }}>
+          配置 whisper.cpp 后，可以给没有字幕的视频自动生成字幕。需要先准备好可执行文件（whisper-cli.exe / main.exe）和模型文件（ggml-*.bin）。
+        </p>
+        <Form
+          form={form}
+          layout="vertical"
+          onValuesChange={handleValuesChange}
+        >
+          <Form.Item label="可执行文件路径" extra="通常是 whisper-cli.exe 或旧版 main.exe">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Form.Item name={['whisper', 'executablePath']} noStyle>
+                <Input readOnly placeholder="请选择 whisper-cli.exe / main.exe..." />
+              </Form.Item>
+              <Button icon={<FolderOpenOutlined />} onClick={handleSelectWhisperExe}>选择</Button>
+            </div>
+          </Form.Item>
+
+          <Form.Item label="模型文件路径" extra="例如 ggml-base.bin / ggml-small.bin / ggml-medium.bin。模型越大越准、越慢。">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Form.Item name={['whisper', 'modelPath']} noStyle>
+                <Input readOnly placeholder="请选择 ggml-*.bin 模型文件..." />
+              </Form.Item>
+              <Button icon={<FolderOpenOutlined />} onClick={handleSelectWhisperModel}>选择</Button>
+            </div>
+          </Form.Item>
+
+          <Form.Item label="默认识别语言" name={['whisper', 'language']}>
+            <Select
+              options={[
+                { value: 'auto', label: '自动检测' },
+                { value: 'zh', label: '中文' },
+                { value: 'en', label: '英文' },
+                { value: 'ja', label: '日文' },
+                { value: 'ko', label: '韩文' },
+                { value: 'es', label: '西班牙文' },
+                { value: 'fr', label: '法文' },
+                { value: 'de', label: '德文' },
+                { value: 'ru', label: '俄文' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item label="线程数" name={['whisper', 'threads']} extra="CPU 线程数，建议设为 CPU 核心数（1-32）">
+            <InputNumber min={1} max={32} style={{ width: 120 }} />
           </Form.Item>
         </Form>
       </Card>
@@ -121,6 +336,69 @@ const Settings: React.FC = () => {
         <Button icon={<FileTextOutlined />} onClick={handleOpenLogs}>
           打开日志文件夹
         </Button>
+      </Card>
+
+      <Card
+        bordered={false}
+        style={{ marginTop: 24, borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+        title={
+          <span>
+            <SyncOutlined style={{ marginRight: 6, color: '#1677ff' }} />
+            yt-dlp 版本管理
+          </span>
+        }
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+          {ytdlpLoading ? (
+            <Spin size="small" />
+          ) : ytdlpInfo?.available ? (
+            <span style={{ fontSize: 13, color: '#52c41a' }}>
+              <CheckCircleOutlined style={{ marginRight: 4 }} />
+              已检测到 yt-dlp {ytdlpInfo.version ? `v${ytdlpInfo.version}` : ''}
+            </span>
+          ) : (
+            <span style={{ fontSize: 13, color: '#ff4d4f' }}>未检测到 yt-dlp，请确认已安装并添加至 PATH</span>
+          )}
+          <Button
+            type="primary"
+            icon={<SyncOutlined spin={updating} />}
+            loading={updating}
+            disabled={!ytdlpInfo?.available}
+            onClick={handleUpdateYtdlp}
+          >
+            {updating ? '更新中...' : '一键更新到最新版'}
+          </Button>
+          {updateResult && (
+            <Tag
+              color={updateResult === 'updated' ? 'success' : 'blue'}
+              icon={<CheckCircleOutlined />}
+              style={{ marginLeft: 4, animation: 'fadeIn 0.3s ease-in' }}
+            >
+              {updateResult === 'updated' ? '更新成功' : '已是最新'}
+            </Tag>
+          )}
+        </div>
+        {updateOutput && (
+          <pre
+            style={{
+              background: '#1a1a1a',
+              color: '#d4d4d4',
+              borderRadius: 6,
+              padding: '10px 14px',
+              fontSize: 12,
+              maxHeight: 200,
+              overflowY: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              marginBottom: 0,
+            }}
+          >
+            {updateOutput}
+          </pre>
+        )}
+        <p style={{ color: '#888', fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+          yt-dlp 版本过旧时解析/下载可能失败（YouTube 会频繁更新规则）。建议每隔一两周更新一次。
+        </p>
       </Card>
     </div>
   )

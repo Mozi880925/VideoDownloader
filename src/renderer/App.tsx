@@ -4,6 +4,7 @@ import Sidebar, { PageKey } from './components/Sidebar'
 import VideoDownload from './pages/VideoDownload'
 import BatchDownload from './pages/BatchDownload'
 import DownloadList from './pages/DownloadList'
+import Subscriptions from './pages/Subscriptions'
 import Settings from './pages/Settings'
 import About from './pages/About'
 import { useDownloadStore } from './store/downloadStore'
@@ -12,6 +13,7 @@ const pageMap: Record<PageKey, React.ReactNode> = {
   'video-download': <VideoDownload />,
   'batch-download': <BatchDownload />,
   'download-list': <DownloadList />,
+  'subscriptions': <Subscriptions />,
   'settings': <Settings />,
   'about': <About />,
 }
@@ -32,6 +34,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const cookiesPath = useDownloadStore.getState().appSettings.cookiesPath || ''
     window.api.setCookiesPath(cookiesPath).catch(() => {})
+  }, [])
+
+  // 启动时把订阅检查间隔推送到主进程
+  useEffect(() => {
+    const interval = useDownloadStore.getState().appSettings.subscriptionCheckInterval || '6h'
+    window.api.subSetInterval(interval).catch(() => {})
   }, [])
 
   // 监听重新下载请求 → 自动切到单视频下载页

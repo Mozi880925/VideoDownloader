@@ -1,5 +1,22 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DownloadOptions, DownloadProgress, VideoInfo, YtdlpInfo, SearchResult } from '../shared/types'
+import type {
+  DownloadOptions,
+  DownloadProgress,
+  VideoInfo,
+  YtdlpInfo,
+  SearchResult,
+  FrameExtractOptions,
+  FrameExtractResult,
+  TranscribeOptions,
+  TranscribeProgress,
+  TranscribeResult,
+  WhisperConfig,
+  TaskResult,
+  ChannelSubscription,
+  NewVideoItem,
+  CheckInterval,
+  VideoListResult,
+} from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   ping: () => ipcRenderer.invoke('ping'),
@@ -16,6 +33,16 @@ contextBridge.exposeInMainWorld('api', {
   /** 搜索素材视频 */
   searchVideos: (keyword: string, limit?: number, proxy?: string): Promise<SearchResult[]> =>
     ipcRenderer.invoke('search-videos', keyword, limit, proxy),
+
+  /** 拉取频道/播放列表的视频列表（基于 yt-dlp --flat-playlist） */
+  fetchVideoList: (
+    url: string,
+    limit?: number,
+    proxy?: string,
+  ): Promise<
+    | { status: 'success'; data: VideoListResult }
+    | { status: 'failed'; errorMessage: string }
+  > => ipcRenderer.invoke('ytdlp:fetch-video-list', url, limit, proxy),
 
   /** 开始下载（resolve 返回最终文件路径，reject 表示失败） */
   downloadVideo: (options: DownloadOptions): Promise<string | undefined> =>
@@ -41,6 +68,10 @@ contextBridge.exposeInMainWorld('api', {
   /** 检测 yt-dlp 可用性 */
   detectYtdlp: (): Promise<YtdlpInfo> => ipcRenderer.invoke('detect-ytdlp'),
 
+  /** 更新 yt-dlp 到最新版本 */
+  ytdlpUpdate: (): Promise<{ success: boolean; output: string }> =>
+    ipcRenderer.invoke('ytdlp:update'),
+
   /** 获取系统下载目录 */
   getDownloadsPath: (): Promise<string> => ipcRenderer.invoke('get-downloads-path'),
 
@@ -51,6 +82,10 @@ contextBridge.exposeInMainWorld('api', {
   /** 用系统默认程序打开文件 */
   openFile: (filepath: string): Promise<string> =>
     ipcRenderer.invoke('open-file', filepath),
+
+  /** 批量检测多个路径是否存在 */
+  checkPaths: (paths: string[]): Promise<Record<string, boolean>> =>
+    ipcRenderer.invoke('fs:check-paths', paths),
 
   // ---- 数据库 ----
 
@@ -65,6 +100,10 @@ contextBridge.exposeInMainWorld('api', {
   /** 删除一条已完成记录 */
   dbDeleteCompletedRecord: (id: string): Promise<void> =>
     ipcRenderer.invoke('db:delete-completed-record', id),
+
+  /** 更新一条已完成记录的标签（逗号分隔字符串） */
+  dbUpdateCompletedRecordTags: (id: string, tags: string): Promise<void> =>
+    ipcRenderer.invoke('db:update-completed-record-tags', id, tags),
 
   /** 获取所有失败记录 */
   dbGetFailedRecords: (): Promise<unknown[]> =>
@@ -117,4 +156,87 @@ contextBridge.exposeInMainWorld('api', {
   /** 打开日志文件夹 */
   openLogsFolder: (): Promise<void> =>
     ipcRenderer.invoke('open-logs-folder'),
+
+  /** 检测 ffmpeg/ffprobe 是否就绪 */
+  ffmpegReady: (): Promise<{ ffmpeg: boolean; ffprobe: boolean }> =>
+    ipcRenderer.invoke('ffmpeg:ready'),
+
+  /** 从视频中提取关键帧 */
+  extractFrames: (
+    options: FrameExtractOptions,
+  ): Promise<
+    | { status: 'success'; data: FrameExtractResult }
+    | { status: 'failed'; errorMessage: string }
+  > => ipcRenderer.invoke('ffmpeg:extract-frames', options),
+
+  /** 检测 Whisper 配置是否就绪 */
+  whisperReady: (cfg: WhisperConfig | undefined): Promise<{ ready: boolean; reason?: string }> =>
+    ipcRenderer.invoke('whisper:ready', cfg),
+
+  /** 转写视频生成 srt */
+  transcribeVideo: (options: TranscribeOptions): Promise<TaskResult<TranscribeResult>> =>
+    ipcRenderer.invoke('whisper:transcribe', options),
+
+  /** 取消转写任务 */
+  cancelTranscribe: (taskId: string): Promise<boolean> =>
+    ipcRenderer.invoke('whisper:cancel', taskId),
+
+  /** 监听转写进度 */
+  onTranscribeProgress: (callback: (p: TranscribeProgress) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, p: TranscribeProgress) => callback(p)
+    ipcRenderer.on('transcribe-progress', handler)
+    return () => ipcRenderer.removeListener('transcribe-progress', handler)
+  },
+
+  // ---- 频道订阅 ----
+
+  subList: (): Promise<ChannelSubscription[]> => ipcRenderer.invoke('sub:list'),
+
+  subAdd: (
+    url: string,
+    customName?: string,
+  ): Promise<
+    | { status: 'success'; data: ChannelSubscription }
+    | { status: 'failed'; errorMessage: string }
+  > => ipcRenderer.invoke('sub:add', url, customName),
+
+  subRemove: (id: string): Promise<void> => ipcRenderer.invoke('sub:remove', id),
+
+  subToggle: (id: string, enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('sub:toggle', id, enabled),
+
+  subSetGroup: (id: string, groupName: string): Promise<void> =>
+    ipcRenderer.invoke('sub:set-group', id, groupName),
+
+  subSetPinned: (id: string, pinned: boolean): Promise<void> =>
+    ipcRenderer.invoke('sub:set-pinned', id, pinned),
+
+  subCheck: (
+    id: string,
+  ): Promise<
+    | { status: 'success'; data: NewVideoItem[] }
+    | { status: 'failed'; errorMessage: string }
+  > => ipcRenderer.invoke('sub:check', id),
+
+  subCheckAll: (): Promise<{ subId: string; subName: string; newVideos: NewVideoItem[]; err?: string }[]> =>
+    ipcRenderer.invoke('sub:check-all'),
+
+  subListNewVideos: (channelId?: string): Promise<NewVideoItem[]> =>
+    ipcRenderer.invoke('sub:new-videos', channelId),
+
+  subDismissNewVideo: (videoId: string, channelId: string): Promise<void> =>
+    ipcRenderer.invoke('sub:dismiss', videoId, channelId),
+
+  subClearNewVideos: (channelId: string): Promise<number> =>
+    ipcRenderer.invoke('sub:clear-new', channelId),
+
+  subSetInterval: (interval: CheckInterval): Promise<void> =>
+    ipcRenderer.invoke('sub:set-interval', interval),
+
+  onSubSchedulerTick: (callback: (info: { totalNew: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: { totalNew: number }) =>
+      callback(info)
+    ipcRenderer.on('sub:scheduler-tick', handler)
+    return () => ipcRenderer.removeListener('sub:scheduler-tick', handler)
+  },
 })

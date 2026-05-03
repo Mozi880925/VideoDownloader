@@ -34,10 +34,8 @@ import {
   detectPlatform,
 } from '../../store/downloadStore'
 import { friendlyError } from '../../../shared/errorTranslator'
+import { buildOutputPath } from '../../utils/buildOutputPath'
 
-// ---- 常量 ----
-
-const MAX_CONCURRENT_DOWNLOADS = 1 // 第一条先下载，其余排队（避免全部卡住）
 
 // ---- 类型 ----
 
@@ -358,6 +356,9 @@ const BatchDownload: React.FC = () => {
 
     const queue = downloadable.map((t) => t.id)
 
+    // 在启动 worker 前读取一次设置（决定并发数 + 路径模板）
+    const appSettings = useDownloadStore.getState().appSettings
+
     // Worker: 从队列中取任务并下载
     const worker = async () => {
       while (queue.length > 0) {
@@ -392,22 +393,22 @@ const BatchDownload: React.FC = () => {
           platform: detectPlatform(videoUrl),
         })
 
-        const appSettings = useDownloadStore.getState().appSettings
-        const platformFolder = detectPlatform(videoUrl) === '其他' ? '%(extractor_key)s' : detectPlatform(videoUrl)
-        const rule = appSettings.namingRule || '%(title)s.%(ext)s'
-        const template = `${platformFolder}\\${rule}`
-        let outputPath = template
-        if (appSettings.downloadPath || downloadsPath) {
-          const base = appSettings.downloadPath || downloadsPath
-          outputPath = `${base.replace(/\\$/, '')}\\${template}`
-        }
+        const baseDir = appSettings.downloadPath || downloadsPath
+        const outputPath = buildOutputPath(
+          videoUrl, baseDir,
+          appSettings.namingRule || '',
+          appSettings.folderOrganize ?? 'none',
+        )
 
         activeDownloadTaskIdRef.current = downloadTaskId
+        const subs = appSettings.subtitles
+        const effectiveSubtitles = subs?.enabled && subs.languages.length > 0 ? subs : undefined
         const result = await window.api.downloadVideo({
           url: videoUrl,
           formatId: (!appSettings.defaultFormat || appSettings.defaultFormat === 'best') ? '' : appSettings.defaultFormat,
           outputPath,
           taskId: downloadTaskId,
+          subtitles: effectiveSubtitles,
         })
         activeDownloadTaskIdRef.current = null
 
@@ -447,8 +448,13 @@ const BatchDownload: React.FC = () => {
       }
     }
 
-    // 启动 N 个 worker 并发执行
-    const workers = Array.from({ length: Math.min(MAX_CONCURRENT_DOWNLOADS, downloadable.length) }, () => worker())
+    // 启动 N 个 worker 并发执行（并发数从设置读取，上限 5）
+    const maxConcurrent = Math.min(
+      Math.max(1, appSettings.maxConcurrentDownloads ?? 3),
+      5,
+      downloadable.length,
+    )
+    const workers = Array.from({ length: maxConcurrent }, () => worker())
     try {
       await Promise.all(workers)
       if (!downloadAbortRef.current) messageApi.success('批量下载完成')

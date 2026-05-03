@@ -2,33 +2,16 @@ import React, { useState, useEffect } from 'react'
 import { Segmented } from 'antd'
 import SingleDownload from './SingleDownload'
 import SearchDownload from './SearchDownload'
+import VideoListPicker from '../../components/VideoListPicker'
+import { useDownloadStore } from '../../store/downloadStore'
 
-type TabKey = 'single' | 'profile' | 'search' | 'playlist' | 'sniff'
+type TabKey = 'single' | 'search' | 'playlist'
 
 const TAB_OPTIONS: { label: string; value: TabKey }[] = [
   { label: '单视频下载', value: 'single' },
   { label: '搜索下载', value: 'search' },
-  { label: '用户主页下载', value: 'profile' },
   { label: '播放列表下载', value: 'playlist' },
-  { label: '资源嗅探', value: 'sniff' },
 ]
-
-const Placeholder: React.FC<{ name: string }> = ({ name }) => (
-  <div
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: 300,
-      color: '#bbb',
-      fontSize: 15,
-    }}
-  >
-    「{name}」功能开发中...
-  </div>
-)
-
-import { useDownloadStore } from '../../store/downloadStore'
 
 const VideoDownload: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('single')
@@ -73,10 +56,13 @@ const VideoDownload: React.FC = () => {
 
       {/* Tab 内容 */}
       {activeTab === 'single' && <SingleDownload />}
-      {activeTab === 'profile' && <Placeholder name="用户主页下载" />}
       {activeTab === 'search' && <SearchDownload />}
-      {activeTab === 'playlist' && <Placeholder name="播放列表下载" />}
-      {activeTab === 'sniff' && <Placeholder name="资源嗅探" />}
+      {activeTab === 'playlist' && (
+        <VideoListPicker
+          placeholder="粘贴 YouTube/Bilibili 等播放列表 URL"
+          defaultLimit={50}
+        />
+      )}
     </div>
   )
 }

@@ -12,6 +12,10 @@ import {
   Space,
   Avatar,
   Skeleton,
+  Checkbox,
+  Tooltip,
+  Collapse,
+  Typography,
 } from 'antd'
 import {
   SearchOutlined,
@@ -22,9 +26,11 @@ import {
   FolderOpenOutlined,
   ReloadOutlined,
   PlusOutlined,
+  ScissorOutlined,
 } from '@ant-design/icons'
 import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
 import { friendlyError } from '../../../shared/errorTranslator'
+import { buildOutputPath } from '../../utils/buildOutputPath'
 
 // ---- 工具函数 ----
 
@@ -42,6 +48,41 @@ function formatFilesize(bytes: number | null): string {
   if (bytes >= 1024 * 1024 * 1024) return `~${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
   if (bytes >= 1024 * 1024) return `~${(bytes / 1024 / 1024).toFixed(0)} MB`
   return `~${(bytes / 1024).toFixed(0)} KB`
+}
+
+function formatTimestamp(seconds: number): string {
+  if (!seconds || seconds < 0) return '0:00'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+/**
+ * 把 "HH:MM:SS" / "MM:SS" / "纯秒数" 解析为秒；非法输入返回 null
+ */
+function parseTimeInput(s: string): number | null {
+  const trimmed = s.trim()
+  if (!trimmed) return null
+  if (/^\d+(\.\d+)?$/.test(trimmed)) return Math.floor(Number(trimmed))
+  const parts = trimmed.split(':').map((p) => p.trim())
+  if (parts.length < 2 || parts.length > 3) return null
+  if (!parts.every((p) => /^\d+$/.test(p))) return null
+  const nums = parts.map(Number)
+  if (parts.length === 2) return nums[0] * 60 + nums[1]
+  return nums[0] * 3600 + nums[1] * 60 + nums[2]
+}
+
+function formatCount(n: number): string {
+  if (n >= 10_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 10_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toLocaleString()
+}
+
+function formatUploadDate(yyyymmdd: string): string {
+  if (!/^\d{8}$/.test(yyyymmdd)) return yyyymmdd
+  return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
 }
 
 function buildFormatLabel(f: VideoFormat): string {
@@ -85,7 +126,12 @@ const SingleDownload: React.FC = () => {
   const [downloadsPath, setDownloadsPath] = useState('')
   const [statusText, setStatusText] = useState('')
   const [isInstantSkip, setIsInstantSkip] = useState(false)
+  const [downloadSubtitles, setDownloadSubtitles] = useState<boolean | null>(null)
+  const [audioOnly, setAudioOnly] = useState(false)
   const currentTaskId = useRef<string>('')
+  const [selectedSection, setSelectedSection] = useState<{ start: number; end: number; title: string } | null>(null)
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
   const [messageApi, contextHolder] = message.useMessage()
 
   // 启动时获取系统下载目录
@@ -98,11 +144,16 @@ const SingleDownload: React.FC = () => {
     setUrl('')
     setVideoInfo(null)
     setSelectedFormatId(undefined)
+    setSelectedSection(null)
+    setCustomStart('')
+    setCustomEnd('')
     setProgress(null)
     setDownloadDone(false)
     setFinalFilepath(undefined)
     setStatusText('')
     setIsInstantSkip(false)
+    setDownloadSubtitles(null)
+    setAudioOnly(false)
   }
 
   // ---- 监听"重新下载"请求 ----
@@ -146,6 +197,9 @@ const SingleDownload: React.FC = () => {
       // 重置页面旧状态 → 填入 URL
       setVideoInfo(null)
       setSelectedFormatId(undefined)
+      setSelectedSection(null)
+      setCustomStart('')
+      setCustomEnd('')
       setProgress(null)
       setDownloadDone(false)
       setFinalFilepath(undefined)
@@ -185,16 +239,14 @@ const SingleDownload: React.FC = () => {
       platform: detectPlatform(videoUrl),
     })
 
-    const platformFolder = detectPlatform(videoUrl) === '其他' ? '%(extractor_key)s' : detectPlatform(videoUrl)
-    const rule = appSettings.namingRule || '%(title)s.%(ext)s'
-    const template = `${platformFolder}\\${rule}`
-    let outputPath = template
     const baseDir = appSettings.downloadPath ||
       downloadsPath ||
       await window.api.getDownloadsPath().catch(() => '')
-    if (baseDir) {
-      outputPath = `${baseDir.replace(/\\$/, '')}\\${template}`
-    }
+    const outputPath = buildOutputPath(
+      videoUrl, baseDir,
+      appSettings.namingRule || '',
+      appSettings.folderOrganize ?? 'none',
+    )
 
     // 监听进度
     const removeListener = window.api.onDownloadProgress((p) => {
@@ -211,12 +263,21 @@ const SingleDownload: React.FC = () => {
       }
     })
 
+    const subsBase = appSettings.subtitles
+    const wantSubs = downloadSubtitles ?? (subsBase?.enabled ?? false)
+    const effectiveSubtitles = subsBase && wantSubs
+      ? { ...subsBase, enabled: true }
+      : undefined
+
     try {
       const result = await window.api.downloadVideo({
         url: videoUrl,
-        formatId: effectiveFormatId,
+        formatId: audioOnly ? undefined : effectiveFormatId,
         outputPath,
         taskId,
+        subtitles: effectiveSubtitles,
+        section: selectedSection ?? undefined,
+        audioOnly,
       })
 
       setStatusText('')
@@ -224,6 +285,7 @@ const SingleDownload: React.FC = () => {
       if (result.status === 'success') {
         setFinalFilepath(result.data)
         setDownloadDone(true)
+        setSelectedSection(null)
         const taskInStore = useDownloadStore.getState().activeTasks.find(t => t.taskId === taskId)
         const instant = taskInStore ? !taskInStore.hasReceivedProgress : false
         setIsInstantSkip(instant)
@@ -377,12 +439,39 @@ const SingleDownload: React.FC = () => {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Select
                   style={{ minWidth: 280, flex: 1, maxWidth: 400 }}
-                  placeholder="选择清晰度/格式"
+                  placeholder={audioOnly ? '仅音频模式（mp3）' : '选择清晰度/格式'}
                   options={formatOptions}
                   value={selectedFormatId ?? '__best__'}
                   onChange={(v) => setSelectedFormatId(v === '__best__' ? undefined : v)}
                   size="middle"
+                  disabled={audioOnly}
                 />
+                <Tooltip title="勾选后跳过视频下载，仅提取最高音质 mp3（需 ffmpeg）">
+                  <Checkbox
+                    checked={audioOnly}
+                    onChange={(e) => setAudioOnly(e.target.checked)}
+                    disabled={downloading}
+                    style={{ fontSize: 13 }}
+                  >
+                    仅音频
+                  </Checkbox>
+                </Tooltip>
+                <Tooltip
+                  title={
+                    appSettings.subtitles && appSettings.subtitles.languages.length > 0
+                      ? `语言：${appSettings.subtitles.languages.join(', ')}${appSettings.subtitles.includeAuto ? '（含自动字幕）' : ''}${appSettings.subtitles.embed ? '（同时嵌入视频）' : ''}`
+                      : '可在 设置 → 默认下载字幕 里配置语言'
+                  }
+                >
+                  <Checkbox
+                    checked={downloadSubtitles ?? (appSettings.subtitles?.enabled ?? false)}
+                    onChange={(e) => setDownloadSubtitles(e.target.checked)}
+                    disabled={downloading || audioOnly}
+                    style={{ fontSize: 13 }}
+                  >
+                    下载字幕
+                  </Checkbox>
+                </Tooltip>
                 <Button
                   type="primary"
                   icon={<DownloadOutlined />}
@@ -391,11 +480,231 @@ const SingleDownload: React.FC = () => {
                   disabled={downloading}
                   style={{ borderRadius: 6 }}
                 >
-                  {downloading ? '下载中...' : '开始下载'}
+                  {downloading
+                    ? '下载中...'
+                    : audioOnly
+                      ? selectedSection ? '下载音频片段' : '下载音频(mp3)'
+                      : selectedSection ? '下载章节' : '开始下载'}
                 </Button>
               </div>
             </Col>
           </Row>
+
+          {/* 自由裁剪（始终显示，章节列表外的备用方式） */}
+          <div
+            style={{
+              marginTop: 12,
+              padding: '8px 12px',
+              background: '#fafafa',
+              border: '1px solid #f0f0f0',
+              borderRadius: 6,
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              fontSize: 12,
+            }}
+          >
+            <ScissorOutlined style={{ color: '#1677ff' }} />
+            <span style={{ color: '#666' }}>自由裁剪（HH:MM:SS 或 MM:SS）：</span>
+            <Input
+              size="small"
+              placeholder="起 00:00"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              disabled={downloading}
+              style={{ width: 100 }}
+            />
+            <span style={{ color: '#bbb' }}>—</span>
+            <Input
+              size="small"
+              placeholder={`止 ${formatTimestamp(videoInfo.duration || 0)}`}
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              disabled={downloading}
+              style={{ width: 100 }}
+            />
+            <Button
+              size="small"
+              type={selectedSection?.title === '自定义片段' ? 'primary' : 'default'}
+              disabled={downloading}
+              onClick={() => {
+                const start = parseTimeInput(customStart) ?? 0
+                const end = parseTimeInput(customEnd)
+                if (end == null || end <= 0) {
+                  messageApi.warning('请输入有效的结束时间')
+                  return
+                }
+                if (end <= start) {
+                  messageApi.warning('结束时间必须大于开始时间')
+                  return
+                }
+                if (videoInfo.duration && end > videoInfo.duration) {
+                  messageApi.warning(`结束时间不能超过视频长度（${formatTimestamp(videoInfo.duration)}）`)
+                  return
+                }
+                setSelectedSection({ start, end, title: '自定义片段' })
+              }}
+            >
+              应用
+            </Button>
+            {selectedSection && selectedSection.title === '自定义片段' && (
+              <span style={{ color: '#1677ff' }}>
+                ✂️ 已应用：{formatTimestamp(selectedSection.start)} – {formatTimestamp(selectedSection.end)}
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => setSelectedSection(null)}
+                  style={{ fontSize: 11, padding: '0 4px' }}
+                >
+                  取消
+                </Button>
+              </span>
+            )}
+          </div>
+
+          {/* 视频详情（可折叠） */}
+          {(() => {
+            const hasDetails =
+              (videoInfo.description && videoInfo.description.trim()) ||
+              (videoInfo.tags && videoInfo.tags.length > 0) ||
+              (videoInfo.chapters && videoInfo.chapters.length > 0) ||
+              videoInfo.viewCount != null ||
+              videoInfo.likeCount != null ||
+              videoInfo.uploadDate
+            if (!hasDetails) return null
+            return (
+              <Collapse
+                ghost
+                size="small"
+                style={{ marginTop: 12 }}
+                items={[
+                  {
+                    key: 'details',
+                    label: <span style={{ fontSize: 13, color: '#666' }}>📋 查看视频详情</span>,
+                    children: (
+                      <div style={{ paddingTop: 4 }}>
+                        {/* 元信息行 */}
+                        <Space size={16} wrap style={{ marginBottom: 12, fontSize: 12, color: '#666' }}>
+                          {videoInfo.uploadDate && (
+                            <span>📅 发布：{formatUploadDate(videoInfo.uploadDate)}</span>
+                          )}
+                          {videoInfo.viewCount != null && (
+                            <span>👁 {formatCount(videoInfo.viewCount)} 次观看</span>
+                          )}
+                          {videoInfo.likeCount != null && (
+                            <span>👍 {formatCount(videoInfo.likeCount)}</span>
+                          )}
+                          {videoInfo.categories && videoInfo.categories.length > 0 && (
+                            <span>🗂 {videoInfo.categories.join(' / ')}</span>
+                          )}
+                        </Space>
+
+                        {/* 简介 */}
+                        {videoInfo.description && videoInfo.description.trim() && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginBottom: 4 }}>简介</div>
+                            <Typography.Paragraph
+                              style={{ fontSize: 13, color: '#555', whiteSpace: 'pre-wrap', marginBottom: 0 }}
+                              ellipsis={{ rows: 4, expandable: true, symbol: '展开' }}
+                            >
+                              {videoInfo.description}
+                            </Typography.Paragraph>
+                          </div>
+                        )}
+
+                        {/* 章节 */}
+                        {videoInfo.chapters && videoInfo.chapters.length > 0 && (
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginBottom: 4 }}>
+                              章节（{videoInfo.chapters.length}）
+                              <span style={{ fontWeight: 400, marginLeft: 8, color: '#aaa' }}>点击 ⬇ 只下载该章节</span>
+                            </div>
+                            <div
+                              style={{
+                                maxHeight: 200,
+                                overflowY: 'auto',
+                                background: '#fafafa',
+                                border: '1px solid #f0f0f0',
+                                borderRadius: 4,
+                                padding: '4px 8px',
+                              }}
+                            >
+                              {videoInfo.chapters.map((c, idx) => {
+                                const nextStart = videoInfo.chapters![idx + 1]?.start_time ?? videoInfo.duration
+                                const isSelected = selectedSection?.start === c.start_time
+                                return (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      display: 'flex',
+                                      gap: 8,
+                                      alignItems: 'center',
+                                      padding: '4px 6px',
+                                      fontSize: 12,
+                                      color: '#555',
+                                      borderRadius: 4,
+                                      background: isSelected ? '#e6f4ff' : 'transparent',
+                                      borderBottom: idx < videoInfo.chapters!.length - 1 ? '1px dashed #eee' : 'none',
+                                      cursor: 'default',
+                                    }}
+                                  >
+                                    <span style={{ color: '#1677ff', fontFamily: 'Consolas, monospace', flexShrink: 0, width: 52 }}>
+                                      {formatTimestamp(c.start_time)}
+                                    </span>
+                                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.title}>
+                                      {c.title}
+                                    </span>
+                                    <Tooltip title={isSelected ? '取消章节选择（下载整个视频）' : `只下载此章节（${formatTimestamp(c.start_time)}–${formatTimestamp(nextStart)}）`}>
+                                      <Button
+                                        size="small"
+                                        type={isSelected ? 'primary' : 'text'}
+                                        icon={<DownloadOutlined />}
+                                        disabled={downloading}
+                                        onClick={() => setSelectedSection(
+                                          isSelected ? null : { start: c.start_time, end: nextStart, title: c.title }
+                                        )}
+                                        style={{ fontSize: 11, padding: '0 6px', height: 22 }}
+                                      />
+                                    </Tooltip>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            {selectedSection && (
+                              <div style={{ marginTop: 6, fontSize: 12, color: '#1677ff' }}>
+                                ✂️ 已选：{selectedSection.title}（{formatTimestamp(selectedSection.start)} – {formatTimestamp(selectedSection.end)}）
+                                <Button type="link" size="small" onClick={() => setSelectedSection(null)} style={{ fontSize: 11 }}>取消</Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 视频原生标签 */}
+                        {videoInfo.tags && videoInfo.tags.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginBottom: 4 }}>
+                              视频标签（{videoInfo.tags.length}）
+                            </div>
+                            <Space size={[4, 4]} wrap>
+                              {videoInfo.tags.slice(0, 30).map((t) => (
+                                <Tag key={t} style={{ fontSize: 11, margin: 0 }}>{t}</Tag>
+                              ))}
+                              {videoInfo.tags.length > 30 && (
+                                <span style={{ fontSize: 11, color: '#999' }}>
+                                  …等 {videoInfo.tags.length} 个
+                                </span>
+                              )}
+                            </Space>
+                          </div>
+                        )}
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            )
+          })()}
 
           {/* 进度条 */}
           {(downloading || downloadDone) && (

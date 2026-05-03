@@ -5,10 +5,13 @@ import fs from 'fs'
 import type {
   VideoInfo,
   VideoFormat,
+  VideoChapter,
   DownloadOptions,
   DownloadProgress,
   YtdlpInfo,
   SearchResult,
+  VideoListItem,
+  VideoListResult,
 } from '../../shared/types'
 import { logInfo, logError } from './logger'
 
@@ -19,6 +22,7 @@ const execFileAsync = promisify(execFile)
 let cachedYtdlpPath: string | null = null
 let cachedJsRuntime: { kind: 'node' | 'deno'; path: string } | null | undefined = undefined  // undefined = not yet resolved
 let cachedFfmpegPath: string | null | undefined = undefined  // undefined = not yet resolved
+let cachedFfprobePath: string | null | undefined = undefined  // undefined = not yet resolved
 
 /**
  * Async resolve: find executable via `where` (Windows)
@@ -53,6 +57,17 @@ async function resolveFfmpegPathAsync(): Promise<string | null> {
   return whichAsync('ffmpeg')
 }
 
+async function resolveFfprobePathAsync(ffmpegPath: string | null): Promise<string | null> {
+  const direct = await whichAsync('ffprobe')
+  if (direct) return direct
+  // Fallback: ffprobe 通常与 ffmpeg 同目录
+  if (ffmpegPath) {
+    const guess = ffmpegPath.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1')
+    if (guess !== ffmpegPath && fs.existsSync(guess)) return guess
+  }
+  return null
+}
+
 /**
  * 初始化所有路径缓存（启动时调用一次，异步非阻塞）
  */
@@ -65,9 +80,11 @@ export async function initPaths(): Promise<void> {
   cachedYtdlpPath = ytdlp
   cachedJsRuntime = jsrt
   cachedFfmpegPath = ffmpeg
+  cachedFfprobePath = await resolveFfprobePathAsync(ffmpeg)
 
   console.log('[ytdlp] resolved yt-dlp  :', cachedYtdlpPath, '| exists:', fs.existsSync(cachedYtdlpPath))
   console.log('[ytdlp] resolved ffmpeg  :', cachedFfmpegPath ?? 'not found', '| exists:', cachedFfmpegPath ? fs.existsSync(cachedFfmpegPath) : false)
+  console.log('[ytdlp] resolved ffprobe :', cachedFfprobePath ?? 'not found', '| exists:', cachedFfprobePath ? fs.existsSync(cachedFfprobePath) : false)
   console.log('[ytdlp] resolved js-rt   :', cachedJsRuntime ? `${cachedJsRuntime.kind}:${cachedJsRuntime.path}` : 'none')
   console.log('[ytdlp] cookies source   : --cookies <file> (path synced from renderer settings)')
 }
@@ -84,6 +101,18 @@ function getJsRuntime(): { kind: 'node' | 'deno'; path: string } | null {
 
 function getFfmpegPath(): string | null {
   return cachedFfmpegPath ?? null
+}
+
+export function getFfmpegPathPublic(): string | null {
+  return cachedFfmpegPath ?? null
+}
+
+export function getFfprobePathPublic(): string | null {
+  return cachedFfprobePath ?? null
+}
+
+export function getYtdlpPathPublic(): string {
+  return cachedYtdlpPath || 'yt-dlp'
 }
 
 // ────────── Cookies file path (set by renderer via IPC on startup / settings change) ──────────
@@ -238,6 +267,21 @@ export async function parseVideo(url: string, proxy?: string, taskId?: string): 
             note: String(f.format_note ?? ''),
             protocol: String(f.protocol ?? ''),
           }))
+        const tags: string[] | undefined = Array.isArray(raw.tags)
+          ? raw.tags.map((t: unknown) => String(t)).filter(Boolean)
+          : undefined
+        const categories: string[] | undefined = Array.isArray(raw.categories)
+          ? raw.categories.map((c: unknown) => String(c)).filter(Boolean)
+          : undefined
+        const chapters: VideoChapter[] | undefined = Array.isArray(raw.chapters)
+          ? raw.chapters
+              .map((c: Record<string, unknown>) => ({
+                title: String(c.title ?? ''),
+                start_time: Number(c.start_time ?? 0),
+                end_time: typeof c.end_time === 'number' ? c.end_time : undefined,
+              }))
+              .filter((c: VideoChapter) => c.title)
+          : undefined
         const info: VideoInfo = {
           title: String(raw.title ?? ''),
           author: String(raw.uploader ?? raw.channel ?? ''),
@@ -245,6 +289,13 @@ export async function parseVideo(url: string, proxy?: string, taskId?: string): 
           thumbnail: String(raw.thumbnail ?? ''),
           webpage_url: String(raw.webpage_url ?? url),
           formats,
+          description: typeof raw.description === 'string' ? raw.description : undefined,
+          tags,
+          categories,
+          viewCount: typeof raw.view_count === 'number' ? raw.view_count : undefined,
+          likeCount: typeof raw.like_count === 'number' ? raw.like_count : undefined,
+          uploadDate: typeof raw.upload_date === 'string' ? raw.upload_date : undefined,
+          chapters: chapters && chapters.length > 0 ? chapters : undefined,
         }
         parseCache.set(cacheKey, { info, timestamp: Date.now() })
         resolve(info)
@@ -409,23 +460,51 @@ export function downloadVideo(
   onDone: (err?: Error, filepath?: string) => void,
 ): void {
   const maxRetries = 2
-  const { url, formatId, outputPath, proxy, taskId } = options
+  const { url, formatId, outputPath, proxy, taskId, subtitles, audioOnly } = options
   const ytdlpPath = getYtdlpPath()
   const ffmpegPath = getFfmpegPath()
 
   const args = [...buildBaseArgs(proxy)]
 
-  // 格式选择逻辑：优先单流(mp4)，其次考虑拆分流合并；无 ffmpeg 时强制单流
-  let targetFormat = formatId
-  if (!targetFormat) {
-    if (ffmpegPath) {
-      targetFormat = 'best[ext=mp4]/best/bv*+ba/b' // 存在 ffmpeg 保持支持合并，但优先 mp4 单流
-    } else {
-      targetFormat = 'best[ext=mp4]/b' // 不存在 ffmpeg，降级纯单流
-      logInfo('[ytdlp] ffmpeg not found — forcing single stream format')
-    }
+  if (subtitles?.enabled && subtitles.languages.length > 0) {
+    args.push('--write-subs')
+    if (subtitles.includeAuto) args.push('--write-auto-subs')
+    args.push('--sub-langs', subtitles.languages.join(','))
+    if (subtitles.convertToSrt) args.push('--convert-subs', 'srt')
+    if (subtitles.embed) args.push('--embed-subs')
   }
-  args.push('-f', targetFormat)
+
+  if (audioOnly) {
+    // 仅音频：提取并转 mp3，最高质量
+    args.push('-f', 'bestaudio/best')
+    args.push('-x', '--audio-format', 'mp3', '--audio-quality', '0')
+    if (!ffmpegPath) {
+      logInfo('[ytdlp] audioOnly requested but ffmpeg not found — extraction may fail')
+    }
+  } else {
+    // 格式选择逻辑：优先单流(mp4)，其次考虑拆分流合并；无 ffmpeg 时强制单流
+    let targetFormat = formatId
+    if (!targetFormat) {
+      if (ffmpegPath) {
+        targetFormat = 'best[ext=mp4]/best/bv*+ba/b' // 存在 ffmpeg 保持支持合并，但优先 mp4 单流
+      } else {
+        targetFormat = 'best[ext=mp4]/b' // 不存在 ffmpeg，降级纯单流
+        logInfo('[ytdlp] ffmpeg not found — forcing single stream format')
+      }
+    }
+    args.push('-f', targetFormat)
+  }
+
+  if (options.section) {
+    const toHms = (s: number) => {
+      const h = Math.floor(s / 3600)
+      const m = Math.floor((s % 3600) / 60)
+      const sec = Math.floor(s % 60)
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    }
+    args.push('--download-sections', `*${toHms(options.section.start)}-${toHms(options.section.end)}`)
+    args.push('--force-keyframes-at-cuts')
+  }
 
   args.push('-o', outputPath)
   args.push('--windows-filenames')
@@ -433,7 +512,10 @@ export function downloadVideo(
   args.push('--continue', '--no-overwrites', '--no-part')
   args.push('--concurrent-fragments', '5')
   
-  if (ffmpegPath) args.push('--ffmpeg-location', ffmpegPath)
+  if (ffmpegPath) {
+    args.push('--ffmpeg-location', ffmpegPath)
+    if (!audioOnly) args.push('--merge-output-format', 'mp4')
+  }
 
   args.push(
     '--newline',
@@ -558,9 +640,11 @@ export function downloadVideo(
         const errMsg = stderrBuf.trim().slice(-500) || `yt-dlp 退出码 ${code}`
         downloadErr = new Error(errMsg)
       } else {
+        // exit code 0：信任 yt-dlp 已成功写盘。
+        // 若路径捕获失败（老版 yt-dlp 不支持 after_move hook）仅记录警告，不作为失败处理。
         const checkFile = finalFilepath || fallbackFilepath
-        if (!checkFile || !fs.existsSync(checkFile)) {
-          downloadErr = new Error('下载似乎完成但未找到最终文件，请检查输出目录')
+        if (checkFile && !fs.existsSync(checkFile)) {
+          logInfo(`[downloadVideo] reported path not found locally (may be network drive or path encoding issue): ${checkFile}`)
         }
       }
 
@@ -604,4 +688,125 @@ export function cancelDownload(taskId: string): boolean {
   killProcessTree(proc)
   activeDownloads.delete(taskId)
   return true
+}
+
+/**
+ * 更新 yt-dlp 到最新版本（运行 yt-dlp -U）
+ */
+export async function updateYtdlp(): Promise<{ success: boolean; output: string }> {
+  const ytdlpPath = getYtdlpPath()
+  return new Promise((resolve) => {
+    let output = ''
+    const proc = spawn(ytdlpPath, ['-U'], { timeout: 60_000 })
+    proc.stdout.on('data', (c: Buffer) => { output += c.toString() })
+    proc.stderr.on('data', (c: Buffer) => { output += c.toString() })
+    proc.on('close', (code) => {
+      resolve({ success: code === 0, output: output.trim().slice(-2000) })
+    })
+    proc.on('error', (err) => {
+      resolve({ success: false, output: '启动失败：' + err.message })
+    })
+  })
+}
+
+/**
+ * 拉取频道/播放列表的视频列表（基于 yt-dlp --flat-playlist）
+ * 适用于：YouTube 频道主页、播放列表 URL 等
+ */
+export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise<VideoListResult> {
+  return new Promise((resolve, reject) => {
+    const cleanUrl = url.trim()
+    if (!cleanUrl) {
+      reject(new Error('URL 不能为空'))
+      return
+    }
+
+    const args = [
+      '--flat-playlist',
+      '--playlist-items', `1-${limit}`,
+      '--dump-json',
+      ...buildBaseArgs(proxy),
+      cleanUrl,
+    ]
+    const proc = spawn(getYtdlpPath(), args)
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      try { proc.kill() } catch {}
+      reject(new Error('拉取视频列表超时（60s）'))
+    }, 60_000)
+
+    proc.stdout.on('data', (c) => { stdout += c.toString() })
+    proc.stderr.on('data', (c) => { stderr += c.toString() })
+
+    proc.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (code !== 0) {
+        reject(new Error(stderr.trim().slice(-500) || `yt-dlp 退出码 ${code}`))
+        return
+      }
+      const lines = stdout.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{'))
+      let channelName: string | undefined
+      let playlistTitle: string | undefined
+      const videos: VideoListItem[] = []
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line)
+          if (!channelName && typeof obj.channel === 'string') channelName = obj.channel
+          if (!channelName && typeof obj.uploader === 'string') channelName = obj.uploader
+          if (!playlistTitle && typeof obj.playlist_title === 'string') playlistTitle = obj.playlist_title
+          if (obj.id && obj.url) {
+            const thumb = Array.isArray(obj.thumbnails) && obj.thumbnails[0]?.url
+              ? String(obj.thumbnails[0].url)
+              : (obj.ie_key === 'Youtube' || obj.extractor_key === 'Youtube'
+                ? `https://i.ytimg.com/vi/${obj.id}/mqdefault.jpg`
+                : '')
+            // upload_date 优先用 yt-dlp 已有的 YYYYMMDD 字符串；fallback 到 release_timestamp / timestamp（Unix 秒）
+            let uploadDate: string | undefined
+            if (typeof obj.upload_date === 'string' && /^\d{8}$/.test(obj.upload_date)) {
+              uploadDate = obj.upload_date
+            } else {
+              const ts = typeof obj.release_timestamp === 'number'
+                ? obj.release_timestamp
+                : typeof obj.timestamp === 'number'
+                  ? obj.timestamp
+                  : null
+              if (ts !== null) {
+                const d = new Date(ts * 1000)
+                if (!isNaN(d.getTime())) {
+                  const y = d.getFullYear()
+                  const m = String(d.getMonth() + 1).padStart(2, '0')
+                  const day = String(d.getDate()).padStart(2, '0')
+                  uploadDate = `${y}${m}${day}`
+                }
+              }
+            }
+            const vc = obj.view_count
+            videos.push({
+              id: String(obj.id),
+              title: String(obj.title || ''),
+              url: String(obj.url),
+              thumbnail: thumb,
+              uploadDate,
+              duration: typeof obj.duration === 'number' ? obj.duration : undefined,
+              viewCount: typeof vc === 'number' ? vc : (typeof vc === 'string' && /^\d+$/.test(vc) ? Number(vc) : undefined),
+            })
+          }
+        } catch { /* skip unparseable */ }
+      }
+      resolve({ channelName: channelName || playlistTitle, videos })
+    })
+    proc.on('error', (err) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(new Error('启动 yt-dlp 失败：' + err.message))
+    })
+  })
 }

@@ -27,6 +27,7 @@ export interface CompletedRecord {
   platform: string
   filepath: string
   completedAt: number
+  tags: string[]
 }
 
 export interface FailedRecord {
@@ -54,6 +55,7 @@ interface DownloadStore {
   // 筛选状态
   filterKeyword: string
   filterPlatform: string | null  // null = 全部平台
+  filterDateRange: [number, number] | null  // null = 全部时间，[startTs, endTs]（毫秒）
 
   commitBatchUrls: (urls: string[]) => void
   consumeBatchUrls: () => string[]
@@ -69,10 +71,12 @@ interface DownloadStore {
   removeFailedRecord: (taskId: string) => void
   clearAllCompleted: () => void
   clearAllFailed: () => void
+  updateRecordTags: (taskId: string, tags: string[]) => void
   setRetryUrl: (url: string) => void
   clearRetryUrl: () => void
   setFilterKeyword: (keyword: string) => void
   setFilterPlatform: (platform: string | null) => void
+  setFilterDateRange: (range: [number, number] | null) => void
 }
 
 // ---- 从 URL 推断平台 ----
@@ -114,10 +118,34 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       namingRule: '%(extractor_key)s_%(uploader,creator,channel)s_%(title).50s_%(upload_date>%Y%m%d)s.%(ext)s',
       enableNotification: true,
       cookiesPath: '',
+      subtitles: {
+        enabled: false,
+        languages: ['zh', 'zh-Hans', 'zh-CN'],
+        includeAuto: false,
+        embed: false,
+        convertToSrt: true,
+      },
+      whisper: {
+        executablePath: '',
+        modelPath: '',
+        language: 'auto',
+        threads: 4,
+      },
+      subscriptionCheckInterval: '6h',
+      maxConcurrentDownloads: 3,
+      folderOrganize: 'none',
     }
     try {
       const s = localStorage.getItem('vdownload_settings')
-      if (s) return { ...defaultSettings, ...JSON.parse(s) }
+      if (s) {
+        const saved = JSON.parse(s)
+        return {
+          ...defaultSettings,
+          ...saved,
+          subtitles: { ...defaultSettings.subtitles!, ...(saved.subtitles ?? {}) },
+          whisper: { ...defaultSettings.whisper!, ...(saved.whisper ?? {}) },
+        }
+      }
     } catch {}
     return defaultSettings
   })(),
@@ -130,6 +158,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
 
   filterKeyword: '',
   filterPlatform: null,
+  filterDateRange: null,
 
   commitBatchUrls: (urls) => set({ pendingBatchUrls: urls }),
   
@@ -155,6 +184,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
         platform: r.platform,
         filepath: r.filepath,
         completedAt: r.completed_at,
+        tags: r.tags ? r.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
       }))
       const failedRecords: FailedRecord[] = failedRows.map((r) => ({
         taskId: r.id,
@@ -221,6 +251,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
         filepath,
         completed_at: completedAt,
         status: 'completed',
+        tags: '',
       }).catch((err: unknown) => console.error('[store] db insert completed failed:', err))
 
       return {
@@ -234,6 +265,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
             platform: task.platform,
             filepath,
             completedAt,
+            tags: [],
           },
           ...state.completedRecords,
         ],
@@ -310,8 +342,20 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
     set({ failedRecords: [] })
   },
 
+  updateRecordTags: (taskId, tags) => {
+    const cleaned = Array.from(new Set(tags.map((t) => t.trim()).filter(Boolean)))
+    window.api.dbUpdateCompletedRecordTags(taskId, cleaned.join(','))
+      .catch((err: unknown) => console.error('[store] db update tags failed:', err))
+    set((state) => ({
+      completedRecords: state.completedRecords.map((r) =>
+        r.taskId === taskId ? { ...r, tags: cleaned } : r,
+      ),
+    }))
+  },
+
   setRetryUrl: (url) => set({ retryUrl: url }),
   clearRetryUrl: () => set({ retryUrl: null }),
   setFilterKeyword: (keyword) => set({ filterKeyword: keyword }),
   setFilterPlatform: (platform) => set({ filterPlatform: platform }),
+  setFilterDateRange: (range) => set({ filterDateRange: range }),
 }))

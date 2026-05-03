@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron'
-import { parseVideo, downloadVideo, cancelDownload, searchVideos } from '../services/ytdlp'
+import { parseVideo, downloadVideo, cancelDownload, searchVideos, updateYtdlp } from '../services/ytdlp'
 import type { DownloadOptions, VideoInfo, SearchResult, TaskResult } from '../../shared/types'
 
 // 将 Error.message 分类为 TaskStatus
@@ -56,5 +56,10 @@ export function registerDownloadHandlers(): void {
   // 取消下载（不涉及结果结构，保持原样）
   ipcMain.handle('cancel-download', async (_event, taskId: string) => {
     return cancelDownload(taskId)
+  })
+
+  // 更新 yt-dlp
+  ipcMain.handle('ytdlp:update', async (): Promise<{ success: boolean; output: string }> => {
+    return updateYtdlp()
   })
 }

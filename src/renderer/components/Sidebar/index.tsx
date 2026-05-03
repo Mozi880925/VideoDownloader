@@ -6,10 +6,17 @@ import {
   SettingOutlined,
   InfoCircleOutlined,
   VideoCameraOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
-export type PageKey = 'video-download' | 'batch-download' | 'download-list' | 'settings' | 'about'
+export type PageKey =
+  | 'video-download'
+  | 'batch-download'
+  | 'download-list'
+  | 'subscriptions'
+  | 'settings'
+  | 'about'
 
 interface SidebarProps {
   selectedKey: PageKey
@@ -38,6 +45,11 @@ const menuItems: MenuProps['items'] = [
         label: '下载列表',
       },
     ],
+  },
+  {
+    key: 'subscriptions',
+    icon: <BellOutlined />,
+    label: '频道订阅',
   },
   {
     key: 'settings',

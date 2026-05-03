@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import type { InputRef } from 'antd'
 import {
   Segmented,
   Card,
@@ -11,7 +12,12 @@ import {
   Input,
   Select,
   Checkbox,
+  Tooltip,
+  DatePicker,
+  Dropdown,
+  message,
 } from 'antd'
+import type { Dayjs } from 'dayjs'
 import {
   FolderOpenOutlined,
   CloseCircleOutlined,
@@ -23,6 +29,12 @@ import {
   SearchOutlined,
   FilterOutlined,
   ClearOutlined,
+  PlusOutlined,
+  TagOutlined,
+  CameraOutlined,
+  AudioOutlined,
+  LoginOutlined,
+  ExportOutlined,
 } from '@ant-design/icons'
 import {
   useDownloadStore,
@@ -31,6 +43,9 @@ import {
   type CompletedRecord,
   type FailedRecord,
 } from '../../store/downloadStore'
+import dayjs from 'dayjs'
+import ExtractFramesModal from '../../components/ExtractFramesModal'
+import TranscribeModal from '../../components/TranscribeModal'
 
 // ---- 工具函数 ----
 
@@ -46,6 +61,52 @@ function statusLabel(status: ActiveTask['status']): string {
     case 'downloading': return '正在下载'
     case 'merging': return '正在合并'
     default: return '下载中'
+  }
+}
+
+// ---- 下载记录导出工具 ----
+
+function csvEscape(v: unknown): string {
+  if (v == null) return ''
+  const s = String(v)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+function recordsToCsv(records: CompletedRecord[]): string {
+  const header = ['taskId', 'title', 'platform', 'url', 'filepath', 'tags', 'completedAt']
+  const rows = records.map((r) => [
+    r.taskId,
+    r.title,
+    r.platform,
+    r.url,
+    r.filepath,
+    (r.tags ?? []).join('|'),
+    new Date(r.completedAt).toISOString(),
+  ])
+  return [header, ...rows].map((row) => row.map(csvEscape).join(',')).join('\r\n')
+}
+
+function downloadBlob(content: string, filename: string, mime: string) {
+  // CSV 加 UTF-8 BOM 让 Excel 直接打开不乱码
+  const isCsv = mime.startsWith('text/csv')
+  const blob = new Blob(isCsv ? ['﻿', content] : [content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function exportRecords(records: CompletedRecord[], format: 'json' | 'csv') {
+  const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)
+  if (format === 'json') {
+    downloadBlob(JSON.stringify(records, null, 2), `download-history-${ts}.json`, 'application/json')
+  } else {
+    downloadBlob(recordsToCsv(records), `download-history-${ts}.csv`, 'text/csv;charset=utf-8')
   }
 }
 
@@ -162,16 +223,111 @@ const ActiveTaskCard: React.FC<{ task: ActiveTask }> = ({ task }) => {
   )
 }
 
+// ---- 标签编辑器 ----
+
+const TagEditor: React.FC<{
+  tags: string[]
+  onChange: (tags: string[]) => void
+  onClickTag?: (tag: string) => void
+}> = ({ tags, onChange, onClickTag }) => {
+  const [editing, setEditing] = useState(false)
+  const [inputValue, setInputValue] = useState('')
+  const inputRef = useRef<InputRef>(null)
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  const handleConfirm = () => {
+    const v = inputValue.trim()
+    if (v && !tags.includes(v)) {
+      onChange([...tags, v])
+    }
+    setInputValue('')
+    setEditing(false)
+  }
+
+  const handleRemove = (tag: string) => {
+    onChange(tags.filter((t) => t !== tag))
+  }
+
+  return (
+    <Space size={[4, 4]} wrap style={{ maxWidth: '100%' }}>
+      {tags.map((t) => (
+        <Tag
+          key={t}
+          closable
+          onClose={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleRemove(t)
+          }}
+          onClick={() => onClickTag?.(t)}
+          title={onClickTag ? `点击筛选"${t}"` : undefined}
+          style={{
+            fontSize: 11, margin: 0,
+            background: '#e6f4ff', borderColor: '#91caff', color: '#1677ff',
+            cursor: onClickTag ? 'pointer' : 'default',
+          }}
+        >
+          <TagOutlined style={{ marginRight: 2 }} />
+          {t}
+        </Tag>
+      ))}
+      {editing ? (
+        <Input
+          ref={inputRef}
+          size="small"
+          type="text"
+          style={{ width: 96, height: 22, fontSize: 11 }}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={handleConfirm}
+          onPressEnter={handleConfirm}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setInputValue('')
+              setEditing(false)
+            }
+          }}
+          maxLength={20}
+          placeholder="输入标签"
+        />
+      ) : (
+        <Tag
+          onClick={() => setEditing(true)}
+          style={{
+            fontSize: 11,
+            margin: 0,
+            background: '#fafafa',
+            borderStyle: 'dashed',
+            color: '#888',
+            cursor: 'pointer',
+          }}
+        >
+          <PlusOutlined style={{ fontSize: 10, marginRight: 2 }} />
+          添加标签
+        </Tag>
+      )}
+    </Space>
+  )
+}
+
 // ---- 已完成记录行 ----
 
 interface CompletedCardProps {
   record: CompletedRecord
   selected: boolean
   onToggle: (taskId: string) => void
+  fileMissing?: boolean
 }
 
-const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, onToggle }) => {
+const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, onToggle, fileMissing }) => {
   const removeRecord = useDownloadStore((s) => s.removeRecord)
+  const updateRecordTags = useDownloadStore((s) => s.updateRecordTags)
+  const setFilterKeyword = useDownloadStore((s) => s.setFilterKeyword)
+  const [framesOpen, setFramesOpen] = useState(false)
+  const [transcribeOpen, setTranscribeOpen] = useState(false)
 
   return (
     <Card
@@ -179,8 +335,9 @@ const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, o
       style={{
         marginBottom: 10,
         borderRadius: 6,
-        background: selected ? '#f0f5ff' : undefined,
-        borderColor: selected ? '#91caff' : undefined,
+        background: selected ? '#f0f5ff' : fileMissing ? '#fafafa' : undefined,
+        borderColor: selected ? '#91caff' : fileMissing ? '#f0f0f0' : undefined,
+        opacity: fileMissing ? 0.7 : 1,
       }}
       styles={{ body: { padding: '12px 16px' } }}
     >
@@ -195,36 +352,67 @@ const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, o
             style={{
               fontWeight: 600,
               fontSize: 13,
-              color: '#1a1a1a',
+              color: fileMissing ? '#888' : '#1a1a1a',
               marginBottom: 4,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
+              textDecoration: fileMissing ? 'line-through' : undefined,
             }}
             title={record.title}
           >
             {record.title || '未知标题'}
           </div>
-          <Space size={8}>
+          <Space size={8} style={{ marginBottom: 6 }}>
             <Tag color="blue" style={{ fontSize: 11 }}>{record.platform}</Tag>
             <span style={{ color: '#999', fontSize: 11 }}>{formatTime(record.completedAt)}</span>
+            {fileMissing && (
+              <Tooltip title={`本地文件已不存在：${record.filepath}`}>
+                <Tag icon={<WarningOutlined />} color="warning" style={{ fontSize: 11 }}>
+                  文件已丢失
+                </Tag>
+              </Tooltip>
+            )}
           </Space>
+          <TagEditor
+            tags={record.tags ?? []}
+            onChange={(next) => updateRecordTags(record.taskId, next)}
+            onClickTag={(tag) => setFilterKeyword(tag)}
+          />
         </div>
         <Space size={4}>
           <Button
             type="text"
             icon={<PlayCircleOutlined />}
             size="small"
-            title="打开文件"
+            title={fileMissing ? '文件已丢失，无法打开' : '打开文件'}
+            disabled={!record.filepath || fileMissing}
             onClick={() => {
               if (record.filepath) window.api.openFile(record.filepath)
             }}
           />
           <Button
             type="text"
+            icon={<CameraOutlined />}
+            size="small"
+            title={fileMissing ? '文件已丢失，无法提取' : '提取关键帧'}
+            disabled={!record.filepath || fileMissing}
+            onClick={() => setFramesOpen(true)}
+          />
+          <Button
+            type="text"
+            icon={<AudioOutlined />}
+            size="small"
+            title={fileMissing ? '文件已丢失，无法转写' : '生成字幕（Whisper）'}
+            disabled={!record.filepath || fileMissing}
+            onClick={() => setTranscribeOpen(true)}
+          />
+          <Button
+            type="text"
             icon={<FolderOpenOutlined />}
             size="small"
-            title="打开文件夹"
+            title={fileMissing ? '文件已丢失' : '打开文件夹'}
+            disabled={!record.filepath || fileMissing}
             onClick={() => {
               if (record.filepath) window.api.showItemInFolder(record.filepath)
             }}
@@ -246,6 +434,22 @@ const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, o
           </Popconfirm>
         </Space>
       </div>
+      {framesOpen && record.filepath && (
+        <ExtractFramesModal
+          open={framesOpen}
+          videoPath={record.filepath}
+          videoTitle={record.title}
+          onClose={() => setFramesOpen(false)}
+        />
+      )}
+      {transcribeOpen && record.filepath && (
+        <TranscribeModal
+          open={transcribeOpen}
+          videoPath={record.filepath}
+          videoTitle={record.title}
+          onClose={() => setTranscribeOpen(false)}
+        />
+      )}
     </Card>
   )
 }
@@ -258,8 +462,13 @@ interface FailedCardProps {
   onToggle: (taskId: string) => void
 }
 
+function isCookieError(msg: string): boolean {
+  return /登录|会员|Cookie/i.test(msg)
+}
+
 const FailedRecordCard: React.FC<FailedCardProps> = ({ record, selected, onToggle }) => {
   const removeFailedRecord = useDownloadStore((s) => s.removeFailedRecord)
+  const needsLogin = isCookieError(record.errorMessage)
 
   return (
     <Card
@@ -298,19 +507,35 @@ const FailedRecordCard: React.FC<FailedCardProps> = ({ record, selected, onToggl
             <Tag color="blue" style={{ fontSize: 11 }}>{record.platform}</Tag>
             <span style={{ color: '#999', fontSize: 11 }}>{formatTime(record.failedAt)}</span>
           </Space>
-          <div
-            style={{
-              color: '#ff4d4f',
-              fontSize: 12,
-              lineHeight: '1.4',
-              maxHeight: 40,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-            title={record.errorMessage}
-          >
-            <WarningOutlined style={{ marginRight: 4 }} />
-            {record.errorMessage || '未知错误'}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+            <div
+              style={{
+                color: '#ff4d4f',
+                fontSize: 12,
+                lineHeight: '1.4',
+                maxHeight: 40,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                flex: 1,
+              }}
+              title={record.errorMessage}
+            >
+              <WarningOutlined style={{ marginRight: 4 }} />
+              {record.errorMessage || '未知错误'}
+            </div>
+            {needsLogin && (
+              <Tooltip title="在应用内登录 YouTube，刷新 Cookie 后重试">
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<LoginOutlined />}
+                  style={{ fontSize: 11, padding: '0 4px', flexShrink: 0 }}
+                  onClick={() => window.api.openLoginWindow().catch(() => {})}
+                >
+                  重新登录
+                </Button>
+              </Tooltip>
+            )}
           </div>
         </div>
         <Space size={4} direction="vertical">
@@ -348,30 +573,52 @@ const FailedRecordCard: React.FC<FailedCardProps> = ({ record, selected, onToggl
 const FilterBar: React.FC = () => {
   const filterKeyword = useDownloadStore((s) => s.filterKeyword)
   const filterPlatform = useDownloadStore((s) => s.filterPlatform)
+  const filterDateRange = useDownloadStore((s) => s.filterDateRange)
   const setFilterKeyword = useDownloadStore((s) => s.setFilterKeyword)
   const setFilterPlatform = useDownloadStore((s) => s.setFilterPlatform)
+  const setFilterDateRange = useDownloadStore((s) => s.setFilterDateRange)
 
   const platformOptions = [
     { value: '__all__', label: '全部平台' },
     ...PLATFORM_OPTIONS.map((p) => ({ value: p, label: p })),
   ]
 
+  const rangeValue: [Dayjs, Dayjs] | null = filterDateRange
+    ? [dayjs(filterDateRange[0]), dayjs(filterDateRange[1])]
+    : null
+
   return (
-    <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+    <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
       <Input
         placeholder="搜索标题关键词…"
         prefix={<SearchOutlined style={{ color: '#bbb' }} />}
         value={filterKeyword}
         onChange={(e) => setFilterKeyword(e.target.value)}
         allowClear
-        style={{ flex: 1, maxWidth: 360, borderRadius: 6 }}
+        style={{ flex: 1, minWidth: 200, maxWidth: 320, borderRadius: 6 }}
       />
       <Select
         value={filterPlatform ?? '__all__'}
         onChange={(v) => setFilterPlatform(v === '__all__' ? null : v)}
         options={platformOptions}
-        style={{ width: 140 }}
+        style={{ width: 130 }}
         suffixIcon={<FilterOutlined />}
+      />
+      <DatePicker.RangePicker
+        value={rangeValue}
+        onChange={(dates) => {
+          if (!dates || !dates[0] || !dates[1]) {
+            setFilterDateRange(null)
+          } else {
+            setFilterDateRange([
+              dates[0].startOf('day').valueOf(),
+              dates[1].endOf('day').valueOf(),
+            ])
+          }
+        }}
+        placeholder={['开始日期', '结束日期']}
+        style={{ borderRadius: 6 }}
+        allowClear
       />
     </div>
   )
@@ -387,11 +634,15 @@ interface BatchBarProps {
   onDeleteSelected: () => void
   onClearAll: () => void
   type: 'completed' | 'failed'
+  onRetrySelected?: () => void
+  onRetryAll?: () => void
+  onExport?: (format: 'json' | 'csv', scope: 'selected' | 'all') => void
 }
 
 const BatchActionBar: React.FC<BatchBarProps> = ({
   selectedCount, totalCount, allSelected,
   onToggleAll, onDeleteSelected, onClearAll, type,
+  onRetrySelected, onRetryAll, onExport,
 }) => {
   if (totalCount === 0) return null
 
@@ -419,6 +670,59 @@ const BatchActionBar: React.FC<BatchBarProps> = ({
       </Checkbox>
 
       <div style={{ flex: 1 }} />
+
+      {/* 已完成列表专属：导出 */}
+      {type === 'completed' && onExport && (
+        <Dropdown
+          menu={{
+            items: [
+              { key: 'json-all', label: `导出全部 (${totalCount}) · JSON` },
+              { key: 'csv-all', label: `导出全部 (${totalCount}) · CSV` },
+              { type: 'divider' as const },
+              {
+                key: 'json-selected',
+                label: `导出选中 (${selectedCount}) · JSON`,
+                disabled: selectedCount === 0,
+              },
+              {
+                key: 'csv-selected',
+                label: `导出选中 (${selectedCount}) · CSV`,
+                disabled: selectedCount === 0,
+              },
+            ],
+            onClick: ({ key }) => {
+              const [fmt, scope] = key.split('-') as ['json' | 'csv', 'selected' | 'all']
+              onExport(fmt, scope)
+            },
+          }}
+        >
+          <Button size="small" icon={<ExportOutlined />}>
+            导出
+          </Button>
+        </Dropdown>
+      )}
+
+      {/* 失败列表专属：重试按钮 */}
+      {type === 'failed' && onRetrySelected && selectedCount > 0 && (
+        <Button
+          size="small"
+          icon={<ReloadOutlined />}
+          onClick={onRetrySelected}
+          title="将选中的失败任务加入批量下载"
+        >
+          重试选中 ({selectedCount})
+        </Button>
+      )}
+      {type === 'failed' && onRetryAll && (
+        <Button
+          size="small"
+          icon={<ReloadOutlined />}
+          onClick={onRetryAll}
+          title="将全部失败任务加入批量下载"
+        >
+          全部重试 ({totalCount})
+        </Button>
+      )}
 
       {selectedCount > 0 && (
         <Popconfirm
@@ -461,14 +765,20 @@ const BatchActionBar: React.FC<BatchBarProps> = ({
 // ---- 筛选逻辑 ----
 
 function matchesFilter(
-  item: { title: string; platform: string },
+  item: { title: string; platform: string; tags?: string[]; ts?: number },
   keyword: string,
   platform: string | null,
+  dateRange: [number, number] | null,
 ): boolean {
   if (platform && item.platform !== platform) return false
   if (keyword) {
     const kw = keyword.toLowerCase()
-    if (!item.title.toLowerCase().includes(kw)) return false
+    const titleHit = item.title.toLowerCase().includes(kw)
+    const tagHit = (item.tags ?? []).some((t) => t.toLowerCase().includes(kw))
+    if (!titleHit && !tagHit) return false
+  }
+  if (dateRange && item.ts != null) {
+    if (item.ts < dateRange[0] || item.ts > dateRange[1]) return false
   }
   return true
 }
@@ -538,25 +848,27 @@ const DownloadList: React.FC = () => {
   const failedRecords = useDownloadStore((s) => s.failedRecords)
   const filterKeyword = useDownloadStore((s) => s.filterKeyword)
   const filterPlatform = useDownloadStore((s) => s.filterPlatform)
+  const filterDateRange = useDownloadStore((s) => s.filterDateRange)
   const removeRecord = useDownloadStore((s) => s.removeRecord)
   const removeFailedRecord = useDownloadStore((s) => s.removeFailedRecord)
   const clearAllCompleted = useDownloadStore((s) => s.clearAllCompleted)
   const clearAllFailed = useDownloadStore((s) => s.clearAllFailed)
+  const commitBatchUrls = useDownloadStore((s) => s.commitBatchUrls)
 
-  const hasFilter = !!filterKeyword || !!filterPlatform
+  const hasFilter = !!filterKeyword || !!filterPlatform || !!filterDateRange
 
   // 派生筛选结果
   const filteredActive = useMemo(
-    () => activeTasks.filter((t) => matchesFilter(t, filterKeyword, filterPlatform)),
+    () => activeTasks.filter((t) => matchesFilter({ ...t, ts: t.startedAt }, filterKeyword, filterPlatform, null)),
     [activeTasks, filterKeyword, filterPlatform],
   )
   const filteredCompleted = useMemo(
-    () => completedRecords.filter((r) => matchesFilter(r, filterKeyword, filterPlatform)),
-    [completedRecords, filterKeyword, filterPlatform],
+    () => completedRecords.filter((r) => matchesFilter({ ...r, ts: r.completedAt }, filterKeyword, filterPlatform, filterDateRange)),
+    [completedRecords, filterKeyword, filterPlatform, filterDateRange],
   )
   const filteredFailed = useMemo(
-    () => failedRecords.filter((r) => matchesFilter(r, filterKeyword, filterPlatform)),
-    [failedRecords, filterKeyword, filterPlatform],
+    () => failedRecords.filter((r) => matchesFilter({ ...r, ts: r.failedAt }, filterKeyword, filterPlatform, filterDateRange)),
+    [failedRecords, filterKeyword, filterPlatform, filterDateRange],
   )
 
   // 选择状态
@@ -590,8 +902,63 @@ const DownloadList: React.FC = () => {
     failedSel.clear()
   }, [clearAllFailed, failedSel])
 
+  const handleRetrySelectedFailed = useCallback(() => {
+    const urls = filteredFailed
+      .filter((r) => failedSel.selected.has(r.taskId))
+      .map((r) => r.url)
+    if (urls.length > 0) commitBatchUrls(urls)
+  }, [filteredFailed, failedSel.selected, commitBatchUrls])
+
+  const handleRetryAllFailed = useCallback(() => {
+    const urls = filteredFailed.map((r) => r.url)
+    if (urls.length > 0) commitBatchUrls(urls)
+  }, [filteredFailed, commitBatchUrls])
+
+  // 文件存在性检测：completedRecords 变化时批量探测一次
+  const [fileExists, setFileExists] = useState<Record<string, boolean>>({})
+  useEffect(() => {
+    const paths = Array.from(
+      new Set(
+        completedRecords
+          .map((r) => r.filepath)
+          .filter((p): p is string => typeof p === 'string' && p.length > 0),
+      ),
+    )
+    if (paths.length === 0) {
+      setFileExists({})
+      return
+    }
+    let cancelled = false
+    window.api.checkPaths(paths).then((res) => {
+      if (!cancelled) setFileExists(res ?? {})
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [completedRecords])
+
+  const [exportMsgApi, exportCtxHolder] = message.useMessage()
+  const handleExportCompleted = useCallback(
+    (format: 'json' | 'csv', scope: 'selected' | 'all') => {
+      const records =
+        scope === 'selected'
+          ? filteredCompleted.filter((r) => completedSel.selected.has(r.taskId))
+          : filteredCompleted
+      if (records.length === 0) {
+        exportMsgApi.warning(scope === 'selected' ? '请先勾选要导出的记录' : '当前没有可导出的记录')
+        return
+      }
+      try {
+        exportRecords(records, format)
+        exportMsgApi.success(`已导出 ${records.length} 条记录`)
+      } catch (err) {
+        exportMsgApi.error(`导出失败：${(err as Error).message}`)
+      }
+    },
+    [filteredCompleted, completedSel.selected, exportMsgApi],
+  )
+
   return (
     <div style={{ padding: 24 }}>
+      {exportCtxHolder}
       {/* 标题 */}
       <h2
         style={{
@@ -660,6 +1027,7 @@ const DownloadList: React.FC = () => {
             onDeleteSelected={handleDeleteSelectedCompleted}
             onClearAll={handleClearAllCompleted}
             type="completed"
+            onExport={handleExportCompleted}
           />
           {filteredCompleted.length === 0 ? (
             <EmptyState description="留下你的第一个下载足迹吧" hasFilter={hasFilter && completedRecords.length > 0} />
@@ -670,6 +1038,11 @@ const DownloadList: React.FC = () => {
                 record={record}
                 selected={completedSel.selected.has(record.taskId)}
                 onToggle={completedSel.toggle}
+                fileMissing={
+                  record.filepath
+                    ? fileExists[record.filepath] === false
+                    : undefined
+                }
               />
             ))
           )}
@@ -687,6 +1060,8 @@ const DownloadList: React.FC = () => {
             onDeleteSelected={handleDeleteSelectedFailed}
             onClearAll={handleClearAllFailed}
             type="failed"
+            onRetrySelected={handleRetrySelectedFailed}
+            onRetryAll={handleRetryAllFailed}
           />
           {filteredFailed.length === 0 ? (
             <EmptyState description="非常好，尚未有任务失败" hasFilter={hasFilter && failedRecords.length > 0} />
