@@ -7,7 +7,7 @@
     "dev": "concurrently -k \"npm run vite\" \"npm run electron:dev\"",
     "vite": "vite",
     "electron:dev": "tsc -p tsconfig.electron.json && wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
-    "build": "vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "build": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false vite build && tsc -p tsconfig.electron.json && electron-builder",
     "start": "electron .",
     "postinstall": "electron-builder install-app-deps"
   },
@@ -38,15 +38,29 @@
   "build": {
     "appId": "com.local.videodownloader",
     "productName": "VideoDownloader",
+    "copyright": "Copyright © 2025",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*"
     ],
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
     }
   }
 }
