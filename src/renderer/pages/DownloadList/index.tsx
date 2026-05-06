@@ -35,6 +35,7 @@ import {
   AudioOutlined,
   LoginOutlined,
   ExportOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons'
 import {
   useDownloadStore,
@@ -46,6 +47,7 @@ import {
 import dayjs from 'dayjs'
 import ExtractFramesModal from '../../components/ExtractFramesModal'
 import TranscribeModal from '../../components/TranscribeModal'
+import SrtViewer from '../../components/SrtViewer'
 
 // ---- 工具函数 ----
 
@@ -328,6 +330,12 @@ const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, o
   const setFilterKeyword = useDownloadStore((s) => s.setFilterKeyword)
   const [framesOpen, setFramesOpen] = useState(false)
   const [transcribeOpen, setTranscribeOpen] = useState(false)
+  const [srtOpen, setSrtOpen] = useState(false)
+
+  // 查找同目录下的 .srt 文件
+  const srtPath = record.filepath
+    ? record.filepath.replace(/\.[^.]+$/, '.srt')
+    : undefined
 
   return (
     <Card
@@ -409,6 +417,14 @@ const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, o
           />
           <Button
             type="text"
+            icon={<FileTextOutlined />}
+            size="small"
+            title="查看字幕文稿"
+            disabled={!srtPath}
+            onClick={() => setSrtOpen(true)}
+          />
+          <Button
+            type="text"
             icon={<FolderOpenOutlined />}
             size="small"
             title={fileMissing ? '文件已丢失' : '打开文件夹'}
@@ -448,6 +464,14 @@ const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, o
           videoPath={record.filepath}
           videoTitle={record.title}
           onClose={() => setTranscribeOpen(false)}
+        />
+      )}
+      {srtOpen && srtPath && (
+        <SrtViewer
+          open={srtOpen}
+          srtPath={srtPath}
+          title={record.title}
+          onClose={() => setSrtOpen(false)}
         />
       )}
     </Card>
@@ -637,12 +661,13 @@ interface BatchBarProps {
   onRetrySelected?: () => void
   onRetryAll?: () => void
   onExport?: (format: 'json' | 'csv', scope: 'selected' | 'all') => void
+  onLocalTranscribe?: () => void
 }
 
 const BatchActionBar: React.FC<BatchBarProps> = ({
   selectedCount, totalCount, allSelected,
   onToggleAll, onDeleteSelected, onClearAll, type,
-  onRetrySelected, onRetryAll, onExport,
+  onRetrySelected, onRetryAll, onExport, onLocalTranscribe,
 }) => {
   if (totalCount === 0) return null
 
@@ -700,6 +725,15 @@ const BatchActionBar: React.FC<BatchBarProps> = ({
             导出
           </Button>
         </Dropdown>
+      )}
+
+      {/* 已完成列表专属：本地音频转写 */}
+      {type === 'completed' && onLocalTranscribe && (
+        <Tooltip title="选择本地音频文件（mp3/m4a/wav）进行 Whisper 转写">
+          <Button size="small" icon={<AudioOutlined />} onClick={onLocalTranscribe}>
+            本地音频转写
+          </Button>
+        </Tooltip>
       )}
 
       {/* 失败列表专属：重试按钮 */}
@@ -935,6 +969,14 @@ const DownloadList: React.FC = () => {
     return () => { cancelled = true }
   }, [completedRecords])
 
+  const [localTranscribePath, setLocalTranscribePath] = useState<string | null>(null)
+  const handleLocalTranscribe = async () => {
+    const file = await window.api.selectFile([
+      { name: '音频/视频文件', extensions: ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'flac', 'mp4', 'mkv', 'webm'] },
+    ])
+    if (file) setLocalTranscribePath(file)
+  }
+
   const [exportMsgApi, exportCtxHolder] = message.useMessage()
   const handleExportCompleted = useCallback(
     (format: 'json' | 'csv', scope: 'selected' | 'all') => {
@@ -959,6 +1001,14 @@ const DownloadList: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       {exportCtxHolder}
+      {localTranscribePath && (
+        <TranscribeModal
+          open={true}
+          videoPath={localTranscribePath}
+          videoTitle={localTranscribePath.split(/[\\/]/).pop()}
+          onClose={() => setLocalTranscribePath(null)}
+        />
+      )}
       {/* 标题 */}
       <h2
         style={{
@@ -1028,6 +1078,7 @@ const DownloadList: React.FC = () => {
             onClearAll={handleClearAllCompleted}
             type="completed"
             onExport={handleExportCompleted}
+            onLocalTranscribe={handleLocalTranscribe}
           />
           {filteredCompleted.length === 0 ? (
             <EmptyState description="留下你的第一个下载足迹吧" hasFilter={hasFilter && completedRecords.length > 0} />

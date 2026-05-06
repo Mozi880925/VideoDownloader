@@ -48,6 +48,7 @@ export interface NewVideoRow {
   thumbnail: string
   upload_date: string
   duration: number
+  view_count: number
   discovered_at: number
   status: string             // 'new' | 'dismissed'
 }
@@ -120,6 +121,17 @@ export function initDb(): void {
       PRIMARY KEY (id, channel_id)
     );
     CREATE INDEX IF NOT EXISTS idx_new_videos_channel_status ON channel_new_videos(channel_id, status);
+    CREATE TABLE IF NOT EXISTS topic_ideas (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      ref_url TEXT NOT NULL DEFAULT '',
+      ref_title TEXT NOT NULL DEFAULT '',
+      ref_thumbnail TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT 0
+    );
   `)
 
   // Migration: 为已存在的旧表补充 tags 列
@@ -142,6 +154,15 @@ export function initDb(): void {
   if (!subCols.some((c) => c.name === 'pinned')) {
     db.exec(`ALTER TABLE channel_subscriptions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`)
     console.log('[db] migration: added `pinned` column to channel_subscriptions')
+  }
+
+  // Migration: 为 channel_new_videos 补充 view_count 列
+  const vidCols = db
+    .prepare(`PRAGMA table_info(channel_new_videos)`)
+    .all() as Array<{ name: string }>
+  if (!vidCols.some((c) => c.name === 'view_count')) {
+    db.exec(`ALTER TABLE channel_new_videos ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`)
+    console.log('[db] migration: added `view_count` column to channel_new_videos')
   }
 
   console.log('[db] database initialized')
@@ -291,8 +312,8 @@ export function insertNewVideos(rows: NewVideoRow[]): number {
   if (rows.length === 0) return 0
   const stmt = ensureDb().prepare(
     `INSERT OR IGNORE INTO channel_new_videos
-      (id, channel_id, title, url, thumbnail, upload_date, duration, discovered_at, status)
-     VALUES (@id, @channel_id, @title, @url, @thumbnail, @upload_date, @duration, @discovered_at, @status)`,
+      (id, channel_id, title, url, thumbnail, upload_date, duration, view_count, discovered_at, status)
+     VALUES (@id, @channel_id, @title, @url, @thumbnail, @upload_date, @duration, @view_count, @discovered_at, @status)`,
   )
   const insertMany = ensureDb().transaction((items: NewVideoRow[]) => {
     let cnt = 0
@@ -333,4 +354,40 @@ export function closeDb(): void {
     db = null
     console.log('[db] database closed')
   }
+}
+
+// ---- 选题灵感库 ----
+
+export interface TopicIdeaRow {
+  id: string
+  title: string
+  notes: string
+  ref_url: string
+  ref_title: string
+  ref_thumbnail: string
+  status: string  // 'pending' | 'planned' | 'filming' | 'published'
+  created_at: number
+  updated_at: number
+}
+
+export function listTopicIdeas(): TopicIdeaRow[] {
+  return ensureDb().prepare('SELECT * FROM topic_ideas ORDER BY updated_at DESC').all() as TopicIdeaRow[]
+}
+
+export function insertTopicIdea(row: TopicIdeaRow): void {
+  ensureDb().prepare(
+    `INSERT INTO topic_ideas (id,title,notes,ref_url,ref_title,ref_thumbnail,status,created_at,updated_at)
+     VALUES (@id,@title,@notes,@ref_url,@ref_title,@ref_thumbnail,@status,@created_at,@updated_at)`
+  ).run(row)
+}
+
+export function updateTopicIdea(id: string, fields: Partial<Omit<TopicIdeaRow, 'id' | 'created_at'>>): void {
+  const db = ensureDb()
+  const now = Date.now()
+  const sets = Object.keys(fields).map((k) => `${k} = @${k}`).join(', ')
+  db.prepare(`UPDATE topic_ideas SET ${sets}, updated_at = ${now} WHERE id = @id`).run({ ...fields, id })
+}
+
+export function deleteTopicIdea(id: string): void {
+  ensureDb().prepare('DELETE FROM topic_ideas WHERE id = ?').run(id)
 }

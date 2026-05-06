@@ -11,6 +11,7 @@ import {
   AudioOutlined,
   FileTextOutlined,
   SoundOutlined,
+  BulbOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
@@ -19,6 +20,7 @@ export type PageKey =
   | 'batch-download'
   | 'download-list'
   | 'subscriptions'
+  | 'topic-ideas'
   | 'transcription'
   | 'subtitle-extract'
   | 'whisper-config'
@@ -58,6 +60,11 @@ const menuItems: MenuProps['items'] = [
     key: 'subscriptions',
     icon: <BellOutlined />,
     label: '频道订阅',
+  },
+  {
+    key: 'topic-ideas',
+    icon: <BulbOutlined />,
+    label: '选题灵感库',
   },
   {
     key: 'subtitle-group',

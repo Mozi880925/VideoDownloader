@@ -734,9 +734,9 @@ export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise
     }
 
     const args = [
+      '--dump-single-json',
       '--flat-playlist',
       '--playlist-items', `1-${limit}`,
-      '--dump-json',
       ...buildBaseArgs(proxy),
       cleanUrl,
     ]
@@ -763,56 +763,61 @@ export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise
         reject(new Error(stderr.trim().slice(-500) || `yt-dlp 退出码 ${code}`))
         return
       }
-      const lines = stdout.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{'))
-      let channelName: string | undefined
-      let playlistTitle: string | undefined
+
+      let root: Record<string, unknown>
+      try {
+        root = JSON.parse(stdout.trim())
+      } catch {
+        reject(new Error('解析视频列表 JSON 失败'))
+        return
+      }
+
+      const channelName: string | undefined =
+        (typeof root.channel === 'string' ? root.channel : undefined) ||
+        (typeof root.uploader === 'string' ? root.uploader : undefined) ||
+        (typeof root.title === 'string' ? root.title : undefined)
+
+      const entries: unknown[] = Array.isArray(root.entries) ? root.entries : []
       const videos: VideoListItem[] = []
-      for (const line of lines) {
+
+      for (const entry of entries) {
         try {
-          const obj = JSON.parse(line)
-          if (!channelName && typeof obj.channel === 'string') channelName = obj.channel
-          if (!channelName && typeof obj.uploader === 'string') channelName = obj.uploader
-          if (!playlistTitle && typeof obj.playlist_title === 'string') playlistTitle = obj.playlist_title
-          if (obj.id && obj.url) {
-            const thumb = Array.isArray(obj.thumbnails) && obj.thumbnails[0]?.url
-              ? String(obj.thumbnails[0].url)
-              : (obj.ie_key === 'Youtube' || obj.extractor_key === 'Youtube'
-                ? `https://i.ytimg.com/vi/${obj.id}/mqdefault.jpg`
-                : '')
-            // upload_date 优先用 yt-dlp 已有的 YYYYMMDD 字符串；fallback 到 release_timestamp / timestamp（Unix 秒）
-            let uploadDate: string | undefined
-            if (typeof obj.upload_date === 'string' && /^\d{8}$/.test(obj.upload_date)) {
-              uploadDate = obj.upload_date
-            } else {
-              const ts = typeof obj.release_timestamp === 'number'
-                ? obj.release_timestamp
-                : typeof obj.timestamp === 'number'
-                  ? obj.timestamp
-                  : null
-              if (ts !== null) {
-                const d = new Date(ts * 1000)
-                if (!isNaN(d.getTime())) {
-                  const y = d.getFullYear()
-                  const m = String(d.getMonth() + 1).padStart(2, '0')
-                  const day = String(d.getDate()).padStart(2, '0')
-                  uploadDate = `${y}${m}${day}`
-                }
+          const obj = entry as Record<string, unknown>
+          if (!obj.id) continue
+          const id = String(obj.id)
+          const url = typeof obj.url === 'string' ? obj.url : `https://www.youtube.com/watch?v=${id}`
+          const thumb = Array.isArray(obj.thumbnails) && (obj.thumbnails[0] as Record<string, unknown>)?.url
+            ? String((obj.thumbnails[0] as Record<string, unknown>).url)
+            : `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
+
+          let uploadDate: string | undefined
+          if (typeof obj.upload_date === 'string' && /^\d{8}$/.test(obj.upload_date)) {
+            uploadDate = obj.upload_date
+          } else {
+            const ts = typeof obj.release_timestamp === 'number' ? obj.release_timestamp
+              : typeof obj.timestamp === 'number' ? obj.timestamp : null
+            if (ts !== null) {
+              const d = new Date(ts * 1000)
+              if (!isNaN(d.getTime())) {
+                uploadDate = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
               }
             }
-            const vc = obj.view_count
-            videos.push({
-              id: String(obj.id),
-              title: String(obj.title || ''),
-              url: String(obj.url),
-              thumbnail: thumb,
-              uploadDate,
-              duration: typeof obj.duration === 'number' ? obj.duration : undefined,
-              viewCount: typeof vc === 'number' ? vc : (typeof vc === 'string' && /^\d+$/.test(vc) ? Number(vc) : undefined),
-            })
           }
-        } catch { /* skip unparseable */ }
+
+          const vc = obj.view_count
+          videos.push({
+            id,
+            title: String(obj.title || ''),
+            url,
+            thumbnail: thumb,
+            uploadDate,
+            duration: typeof obj.duration === 'number' ? obj.duration : undefined,
+            viewCount: typeof vc === 'number' ? vc : (typeof vc === 'string' && /^\d+$/.test(vc) ? Number(vc) : undefined),
+          })
+        } catch { /* skip */ }
       }
-      resolve({ channelName: channelName || playlistTitle, videos })
+
+      resolve({ channelName, videos })
     })
     proc.on('error', (err) => {
       if (settled) return

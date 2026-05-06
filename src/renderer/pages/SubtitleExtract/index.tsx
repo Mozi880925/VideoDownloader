@@ -63,7 +63,22 @@ const SubtitleExtract: React.FC = () => {
   const appSettings = useDownloadStore(s => s.appSettings)
   const [urlText, setUrlText] = useState('')
   const [filter, setFilter] = useState<FilterStatus>('all')
-  const [tasks, setTasks] = useState<ExtractTask[]>([])
+  // 任务列表持久化
+  const STORAGE_KEY = 'vd_subtitle_extract_tasks'
+  const [tasks, setTasks] = useState<ExtractTask[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return []
+      const parsed = JSON.parse(raw) as ExtractTask[]
+      return parsed.map(t => t.status === 'processing'
+        ? { ...t, status: 'failed' as TaskStatus, errorMessage: '页面切换导致中断，请重新提取' }
+        : t)
+    } catch { return [] }
+  })
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)) } catch {}
+  }, [tasks])
+
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const processingRef = useRef(false)
 

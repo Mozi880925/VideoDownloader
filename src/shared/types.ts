@@ -218,6 +218,7 @@ export interface NewVideoItem {
   thumbnail: string
   uploadDate?: string        // YYYYMMDD
   duration?: number
+  viewCount?: number
   discoveredAt: number
   status: 'new' | 'dismissed'
 }

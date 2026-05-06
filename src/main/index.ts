@@ -38,6 +38,11 @@ import {
   clearAllFailedRecords,
   type CompletedRecordRow,
   type FailedRecordRow,
+  listTopicIdeas,
+  insertTopicIdea,
+  updateTopicIdea,
+  deleteTopicIdea,
+  type TopicIdeaRow,
 } from './services/db'
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -133,6 +138,40 @@ app.whenReady().then(async () => {
     return result
   })
 
+  // 读取文本文件内容（字幕查看器用）
+  ipcMain.handle('fs:read-text-file', async (_event, filePath: string) => {
+    return fs.readFileSync(filePath, 'utf-8')
+  })
+
+  // 获取磁盘可用空间（传入目标目录路径）
+  ipcMain.handle('fs:get-disk-space', async (_event, dirPath: string) => {
+    try {
+      // Windows: 用 fs.statfs (Node 18+) 或 fallback 到 wmic
+      if ((fs as any).statfs) {
+        const stat = await (fs.promises as any).statfs(dirPath)
+        return { available: stat.bavail * stat.bsize, total: stat.blocks * stat.bsize }
+      }
+      // fallback: wmic logicaldisk
+      const { execFile } = await import('child_process')
+      const driveLetter = dirPath.slice(0, 2).toUpperCase()
+      return await new Promise<{ available: number; total: number }>((resolve) => {
+        execFile('wmic', ['logicaldisk', 'where', `DeviceID="${driveLetter}"`, 'get', 'FreeSpace,Size', '/format:csv'],
+          { timeout: 5000 },
+          (_err, stdout) => {
+            const lines = stdout.trim().split('\n').filter(l => l.includes(','))
+            const last = lines[lines.length - 1]?.split(',')
+            if (last && last.length >= 3) {
+              resolve({ available: Number(last[1]) || 0, total: Number(last[2]) || 0 })
+            } else {
+              resolve({ available: 0, total: 0 })
+            }
+          })
+      })
+    } catch {
+      return { available: 0, total: 0 }
+    }
+  })
+
   // ---- 数据库 IPC ----
   ipcMain.handle('db:get-completed-records', () => {
     try {
@@ -209,6 +248,12 @@ app.whenReady().then(async () => {
       return 0
     }
   })
+
+  // ---- 选题灵感库 IPC ----
+  ipcMain.handle('topic:list', () => listTopicIdeas())
+  ipcMain.handle('topic:insert', (_e, row: TopicIdeaRow) => insertTopicIdea(row))
+  ipcMain.handle('topic:update', (_e, id: string, fields: Partial<TopicIdeaRow>) => updateTopicIdea(id, fields))
+  ipcMain.handle('topic:delete', (_e, id: string) => deleteTopicIdea(id))
 
   // ---- Wrap-up Features ----
   ipcMain.handle('select-directory', async (event, defaultPath?: string) => {

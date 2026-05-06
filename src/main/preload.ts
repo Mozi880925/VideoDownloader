@@ -85,9 +85,17 @@ contextBridge.exposeInMainWorld('api', {
   openFile: (filepath: string): Promise<string> =>
     ipcRenderer.invoke('open-file', filepath),
 
+  /** 读取文本文件内容 */
+  readTextFile: (filePath: string): Promise<string> =>
+    ipcRenderer.invoke('fs:read-text-file', filePath),
+
   /** 批量检测多个路径是否存在 */
   checkPaths: (paths: string[]): Promise<Record<string, boolean>> =>
     ipcRenderer.invoke('fs:check-paths', paths),
+
+  /** 获取磁盘可用空间 */
+  getDiskSpace: (dirPath: string): Promise<{ available: number; total: number }> =>
+    ipcRenderer.invoke('fs:get-disk-space', dirPath),
 
   // ---- 数据库 ----
 
@@ -269,4 +277,10 @@ contextBridge.exposeInMainWorld('api', {
     srtPaths?: string[]
     errorMessage?: string
   }> => ipcRenderer.invoke('extract-subtitles', url, outputDir, langs),
+
+  // ---- 选题灵感库 ----
+  topicList: (): Promise<unknown[]> => ipcRenderer.invoke('topic:list'),
+  topicInsert: (row: unknown): Promise<void> => ipcRenderer.invoke('topic:insert', row),
+  topicUpdate: (id: string, fields: unknown): Promise<void> => ipcRenderer.invoke('topic:update', id, fields),
+  topicDelete: (id: string): Promise<void> => ipcRenderer.invoke('topic:delete', id),
 })

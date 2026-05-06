@@ -6,6 +6,8 @@ import {
   Table,
   Tag,
   Space,
+  Switch,
+  Tooltip,
   message,
   Popconfirm,
   Progress,
@@ -32,36 +34,12 @@ import {
 import {
   useDownloadStore,
   detectPlatform,
+  type BatchTask,
+  type ParseStatus,
+  type DownloadStatus,
 } from '../../store/downloadStore'
 import { friendlyError } from '../../../shared/errorTranslator'
 import { buildOutputPath } from '../../utils/buildOutputPath'
-
-
-// ---- 类型 ----
-
-type ParseStatus = 'waiting' | 'parsing' | 'parsed' | 'parse_failed'
-type DownloadStatus = 'idle' | 'queued' | 'downloading' | 'downloaded' | 'download_failed' | 'cancelled'
-
-interface BatchTask {
-  id: string
-  url: string
-  parseStatus: ParseStatus
-  downloadStatus: DownloadStatus
-  // 解析结果
-  title?: string
-  thumbnail?: string
-  author?: string
-  duration?: number
-  formatCount?: number
-  parseError?: string
-  // 下载状态
-  downloadTaskId?: string
-  progress?: number
-  speed?: string
-  eta?: string
-  filepath?: string
-  downloadError?: string
-}
 
 // ---- 工具函数 ----
 
@@ -155,9 +133,15 @@ const MiniThumbnail: React.FC<{ src?: string }> = ({ src }) => (
 
 const BatchDownload: React.FC = () => {
   const [inputText, setInputText] = useState('')
-  const [tasks, setTasks] = useState<BatchTask[]>([])
-  const [isParsing, setIsParsing] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
+  const tasks = useDownloadStore((s) => s.batchTasks)
+  const setTasks = useDownloadStore((s) => s.setBatchTasks)
+  const isParsing = useDownloadStore((s) => s.batchIsParsing)
+  const setIsParsing = useDownloadStore((s) => s.setBatchIsParsing)
+  const isDownloading = useDownloadStore((s) => s.batchIsDownloading)
+  const setIsDownloading = useDownloadStore((s) => s.setBatchIsDownloading)
+  const appSettings = useDownloadStore((s) => s.appSettings)
+  const updateSettings = useDownloadStore((s) => s.updateSettings)
+  const subsEnabled = appSettings.subtitles?.enabled ?? false
   const consumeBatchUrls = useDownloadStore((s) => s.consumeBatchUrls)
   const parseAbortRef = useRef(false)
   const downloadAbortRef = useRef(false)
@@ -185,32 +169,7 @@ const BatchDownload: React.FC = () => {
     }
   }, [tasks, consumeBatchUrls])
 
-  // ---- 进度监听：批量下载时监听所有进度事件 ----
-
-  useEffect(() => {
-    if (!isDownloading) return
-
-    const removeListener = window.api.onDownloadProgress((p) => {
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.downloadTaskId !== p.taskId) return t
-          // 同步到 downloadStore
-          useDownloadStore.getState().updateProgress(
-            p.taskId, p.progress, p.speed, p.eta, p.filesize,
-          )
-          return {
-            ...t,
-            progress: p.progress,
-            speed: p.speed,
-            eta: p.eta,
-            downloadStatus: 'downloading' as const,
-          }
-        }),
-      )
-    })
-
-    return () => removeListener()
-  }, [isDownloading])
+  // ---- 进度监听：已移至 App.tsx 顶层，此处无需重复注册 ----
 
   // ---- 添加 URL ----
 
@@ -280,6 +239,7 @@ const BatchDownload: React.FC = () => {
               author: info.author || undefined,
               duration: info.duration || undefined,
               formatCount: info.formats?.length || 0,
+              filesize: info.formats?.reduce((max, f) => Math.max(max, f.filesize || 0), 0) || undefined,
             }
           }),
         )
@@ -353,6 +313,21 @@ const BatchDownload: React.FC = () => {
       setIsDownloading(false)
       return
     }
+
+    // 磁盘空间预估检查（非阻塞，仅警告）
+    try {
+      const baseDir = useDownloadStore.getState().appSettings.downloadPath || downloadsPath
+      if (baseDir) {
+        const totalEstimated = downloadable.reduce((sum, t) => sum + (t.filesize || 0), 0)
+        if (totalEstimated > 0) {
+          const disk = await window.api.getDiskSpace(baseDir)
+          if (disk.available > 0 && totalEstimated > disk.available) {
+            const toMB = (b: number) => (b / 1024 / 1024).toFixed(0)
+            messageApi.warning(`磁盘空间可能不足：预估共 ${toMB(totalEstimated)} MB，可用 ${toMB(disk.available)} MB`, 8)
+          }
+        }
+      }
+    } catch { /* 忽略磁盘检查失败 */ }
 
     const queue = downloadable.map((t) => t.id)
 
@@ -514,6 +489,26 @@ const BatchDownload: React.FC = () => {
   }
 
   const isBusy = isParsing || isDownloading
+
+  // ---- 批量下载进度汇总 ----
+  const batchProgress = React.useMemo(() => {
+    if (!isDownloading) return null
+    const dlTasks = tasks.filter((t) => t.downloadStatus === 'downloading' || t.downloadStatus === 'downloaded')
+    if (dlTasks.length === 0) return null
+    const total = stats.downloading + stats.downloaded + stats.downloadFailed
+    if (total === 0) return null
+    // 总进度 = 已完成数 + 各下载中任务的进度之和
+    const progressSum = tasks
+      .filter((t) => t.downloadStatus === 'downloading')
+      .reduce((sum, t) => sum + (t.progress ?? 0), 0)
+    const overallPercent = Math.round((stats.downloaded * 100 + progressSum) / total)
+    // 预计剩余时间：取所有下载中任务 ETA 的最大值
+    const etas = tasks
+      .filter((t) => t.downloadStatus === 'downloading' && t.eta && t.eta !== 'Unknown')
+      .map((t) => t.eta!)
+    const etaText = etas.length > 0 ? etas.sort().reverse()[0] : null
+    return { percent: overallPercent, etaText, done: stats.downloaded, total }
+  }, [isDownloading, tasks, stats])
 
   // ---- 表格列 ----
 
@@ -751,6 +746,19 @@ const BatchDownload: React.FC = () => {
             </Button>
           )}
 
+          {/* 字幕开关 */}
+          <Tooltip title={subsEnabled ? `字幕已开启（${(appSettings.subtitles?.languages ?? []).join(', ')}）` : '点击开启字幕下载'}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px' }}>
+              <Switch
+                size="small"
+                checked={subsEnabled}
+                onChange={(v) => updateSettings({ subtitles: { ...appSettings.subtitles!, enabled: v } })}
+                disabled={isBusy}
+              />
+              <span style={{ fontSize: 12, color: subsEnabled ? '#1677ff' : '#999' }}>字幕</span>
+            </div>
+          </Tooltip>
+
           {/* 下载按钮 */}
           {isDownloading ? (
             <Button danger icon={<PauseCircleOutlined />} onClick={handleAbortDownload} style={{ borderRadius: 6 }}>
@@ -806,6 +814,28 @@ const BatchDownload: React.FC = () => {
             </Popconfirm>
           </Space>
         </div>
+      )}
+
+      {/* 批量下载总进度条 */}
+      {batchProgress && (
+        <Card style={{ marginBottom: 12, borderRadius: 8, background: '#f0f7ff', border: '1px solid #bae0ff' }} styles={{ body: { padding: '10px 16px' } }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 13, color: '#1677ff', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              总进度 {batchProgress.done}/{batchProgress.total}
+            </span>
+            <Progress
+              percent={batchProgress.percent}
+              strokeColor={{ from: '#1677ff', to: '#4096ff' }}
+              style={{ flex: 1, marginBottom: 0 }}
+              size="small"
+            />
+            {batchProgress.etaText && (
+              <span style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap' }}>
+                预计剩余 {batchProgress.etaText}
+              </span>
+            )}
+          </div>
+        </Card>
       )}
 
       {/* 任务表格或空状态 */}

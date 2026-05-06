@@ -5,6 +5,7 @@ import VideoDownload from './pages/VideoDownload'
 import BatchDownload from './pages/BatchDownload'
 import DownloadList from './pages/DownloadList'
 import Subscriptions from './pages/Subscriptions'
+import TopicIdeas from './pages/TopicIdeas'
 import Transcription from './pages/Transcription'
 import SubtitleExtract from './pages/SubtitleExtract'
 import WhisperConfig from './pages/WhisperConfig'
@@ -18,6 +19,7 @@ const pageMap: Record<PageKey, React.ReactNode> = {
   'batch-download': <BatchDownload />,
   'download-list': <DownloadList />,
   'subscriptions': <Subscriptions />,
+  'topic-ideas': <TopicIdeas />,
   'transcription': <Transcription />,
   'subtitle-extract': <SubtitleExtract />,
   'whisper-config': <WhisperConfig />,
@@ -32,6 +34,24 @@ const App: React.FC = () => {
   const dbLoaded = useDownloadStore((s) => s.dbLoaded)
   const retryUrl = useDownloadStore((s) => s.retryUrl)
   const pendingBatchUrls = useDownloadStore((s) => s.pendingBatchUrls)
+
+  // 全局进度监听（常驻，不随页面切换销毁）
+  useEffect(() => {
+    const remove = window.api.onDownloadProgress((p) => {
+      const store = useDownloadStore.getState()
+      // 更新 activeTasks（单视频下载）
+      store.updateProgress(p.taskId, p.progress, p.speed, p.eta, p.filesize)
+      // 更新 batchTasks
+      store.setBatchTasks((prev) =>
+        prev.map((t) =>
+          t.downloadTaskId === p.taskId
+            ? { ...t, progress: p.progress, speed: p.speed, eta: p.eta, downloadStatus: 'downloading' as const }
+            : t,
+        ),
+      )
+    })
+    return () => remove()
+  }, [])
 
   // 启动时从数据库加载已完成记录
   useEffect(() => {

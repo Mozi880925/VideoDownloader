@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import {
   Button, Input, Table, Tag, Tooltip, Empty, message, Segmented, Progress,
 } from 'antd'
@@ -75,7 +75,26 @@ const Transcription: React.FC = () => {
   const [tab, setTab] = useState<TabMode>('url')
   const [urlText, setUrlText] = useState('')
   const [filter, setFilter] = useState<FilterStatus>('all')
-  const [tasks, setTasks] = useState<TranscribeTask[]>([])
+
+  // 任务列表持久化到 localStorage
+  const STORAGE_KEY = 'vd_transcribe_tasks'
+  const [tasks, setTasks] = useState<TranscribeTask[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return []
+      const parsed = JSON.parse(raw) as TranscribeTask[]
+      // 切页时正在处理中的任务，主进程已经被中断，标记为失败
+      return parsed.map(t => t.status === 'processing'
+        ? { ...t, status: 'failed' as TaskStatus, errorMessage: '页面切换导致中断，请重新转录' }
+        : t)
+    } catch { return [] }
+  })
+
+  // tasks 变化时自动保存
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)) } catch {}
+  }, [tasks])
+
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const processingRef = useRef(false)
 
@@ -187,10 +206,42 @@ const Transcription: React.FC = () => {
       return
     }
     if (processingRef.current) return
+
+    // 自动把待提交的文件 / URL 转换为任务（省掉手动「添加到队列」步骤）
+    const autoFromFiles: TranscribeTask[] = pendingFiles.map(filePath => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      title: shortPath(filePath),
+      sourceType: 'file',
+      sourcePath: filePath,
+      addedAt: Date.now(),
+      status: 'pending',
+      progress: 0,
+    }))
+    let autoFromUrls: TranscribeTask[] = []
+    if (tab === 'url' && urlText.trim()) {
+      const lines = urlText.trim().split('\n').map(l => l.trim()).filter(Boolean)
+      autoFromUrls = lines.map(url => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        title: url.length > 60 ? url.slice(0, 60) + '…' : url,
+        sourceType: 'url',
+        sourcePath: url,
+        addedAt: Date.now(),
+        status: 'pending',
+        progress: 0,
+      }))
+    }
+    if (autoFromFiles.length || autoFromUrls.length) {
+      setTasks(prev => [...prev, ...autoFromFiles, ...autoFromUrls])
+      setPendingFiles([])
+      setUrlText('')
+    }
+
     processingRef.current = true
 
-    const pending = tasks.filter(t => t.status === 'pending')
-    if (!pending.length) { message.info('没有待处理的任务'); processingRef.current = false; return }
+    // 包含刚加入的任务一起处理
+    const allPending = [...tasks.filter(t => t.status === 'pending'), ...autoFromFiles, ...autoFromUrls]
+    if (!allPending.length) { message.info('没有待处理的任务'); processingRef.current = false; return }
+    const pending = allPending
 
     for (const task of pending) {
       // 仅支持本地文件
@@ -334,6 +385,7 @@ const Transcription: React.FC = () => {
   ]
 
   const hasPending = tasks.some(t => t.status === 'pending')
+  const canTranscribe = hasPending || pendingFiles.length > 0 || (tab === 'url' && urlText.trim().length > 0)
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
@@ -470,7 +522,7 @@ const Transcription: React.FC = () => {
           <Button
             type="primary"
             icon={<AudioOutlined />}
-            disabled={!hasPending}
+            disabled={!canTranscribe}
             onClick={handleStart}
             style={{ background: '#7c3aed', borderColor: '#7c3aed' }}
           >

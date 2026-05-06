@@ -47,6 +47,7 @@ function rowToNewVideo(r: NewVideoRow): NewVideoItem {
     thumbnail: r.thumbnail,
     uploadDate: r.upload_date || undefined,
     duration: r.duration || undefined,
+    viewCount: r.view_count || undefined,
     discoveredAt: r.discovered_at,
     status: r.status === 'dismissed' ? 'dismissed' : 'new',
   }
@@ -105,6 +106,7 @@ export async function addSubscription(url: string, customName?: string): Promise
     thumbnail: v.thumbnail,
     upload_date: v.uploadDate ?? '',
     duration: v.duration ?? 0,
+    view_count: v.viewCount ?? 0,
     discovered_at: now,
     status: 'seen' as const,
   }))
@@ -162,6 +164,7 @@ export async function checkSubscription(id: string): Promise<NewVideoItem[]> {
     thumbnail: v.thumbnail,
     upload_date: v.uploadDate ?? '',
     duration: v.duration ?? 0,
+    view_count: v.viewCount ?? 0,
     discovered_at: now,
     status: 'new',
   }))
@@ -178,6 +181,7 @@ export async function checkSubscription(id: string): Promise<NewVideoItem[]> {
       thumbnail: v.thumbnail,
       upload_date: v.uploadDate ?? '',
       duration: v.duration ?? 0,
+      view_count: v.viewCount ?? 0,
       discovered_at: now,
       status: 'seen' as const,
     }))

@@ -2,6 +2,31 @@ import { create } from 'zustand'
 import { friendlyError } from '../../shared/errorTranslator'
 import type { AppSettings } from '../../shared/types'
 
+// ---- 批量下载任务类型（在 store 中定义以便跨组件共享）----
+
+export type ParseStatus = 'waiting' | 'parsing' | 'parsed' | 'parse_failed'
+export type DownloadStatus = 'idle' | 'queued' | 'downloading' | 'downloaded' | 'download_failed' | 'cancelled'
+
+export interface BatchTask {
+  id: string
+  url: string
+  parseStatus: ParseStatus
+  downloadStatus: DownloadStatus
+  title?: string
+  thumbnail?: string
+  author?: string
+  duration?: number
+  formatCount?: number
+  parseError?: string
+  downloadTaskId?: string
+  progress?: number
+  speed?: string
+  eta?: string
+  filepath?: string
+  downloadError?: string
+  filesize?: number
+}
+
 // ---- 类型 ----
 
 export interface ActiveTask {
@@ -59,6 +84,14 @@ interface DownloadStore {
 
   commitBatchUrls: (urls: string[]) => void
   consumeBatchUrls: () => string[]
+
+  // 批量下载任务状态（跨页面持久）
+  batchTasks: BatchTask[]
+  batchIsParsing: boolean
+  batchIsDownloading: boolean
+  setBatchTasks: (tasks: BatchTask[] | ((prev: BatchTask[]) => BatchTask[])) => void
+  setBatchIsParsing: (v: boolean) => void
+  setBatchIsDownloading: (v: boolean) => void
 
   loadFromDb: () => Promise<void>
   addTask: (task: Omit<ActiveTask, 'progress' | 'speed' | 'eta' | 'filesize' | 'status' | 'hasReceivedProgress' | 'startedAt'>) => void
@@ -164,7 +197,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
   filterDateRange: null,
 
   commitBatchUrls: (urls) => set({ pendingBatchUrls: urls }),
-  
+
   consumeBatchUrls: () => {
     const urls = get().pendingBatchUrls
     if (urls.length > 0) {
@@ -172,6 +205,15 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
     }
     return urls
   },
+
+  batchTasks: [],
+  batchIsParsing: false,
+  batchIsDownloading: false,
+  setBatchTasks: (tasks) => set((state) => ({
+    batchTasks: typeof tasks === 'function' ? tasks(state.batchTasks) : tasks,
+  })),
+  setBatchIsParsing: (v) => set({ batchIsParsing: v }),
+  setBatchIsDownloading: (v) => set({ batchIsDownloading: v }),
 
   loadFromDb: async () => {
     try {

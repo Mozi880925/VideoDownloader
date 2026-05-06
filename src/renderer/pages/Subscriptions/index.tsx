@@ -27,6 +27,7 @@ import {
   ClockCircleOutlined,
   BellOutlined,
   AppstoreOutlined,
+  UnorderedListOutlined,
   FireOutlined,
   PushpinOutlined,
   PushpinFilled,
@@ -50,6 +51,13 @@ function formatUploadDate(yyyymmdd?: string): string {
   return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
 }
 
+function formatViewCount(n?: number): string {
+  if (!n) return ''
+  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}亿`
+  if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万`
+  return n.toLocaleString()
+}
+
 function formatDuration(seconds?: number): string {
   if (!seconds || seconds <= 0) return ''
   const h = Math.floor(seconds / 3600)
@@ -63,11 +71,12 @@ function formatDuration(seconds?: number): string {
 
 interface VideoRowProps {
   v: NewVideoItem
+  isHot?: boolean
   onDownload: (url: string) => void
   onDismiss?: (videoId: string, channelId: string) => void
 }
 
-const VideoRow: React.FC<VideoRowProps> = ({ v, onDownload, onDismiss }) => {
+const VideoRow: React.FC<VideoRowProps> = ({ v, isHot, onDownload, onDismiss }) => {
   const isNew = v.status === 'new'
 
   return (
@@ -138,17 +147,18 @@ const VideoRow: React.FC<VideoRowProps> = ({ v, onDownload, onDismiss }) => {
           title={v.title}
         >
           {isNew && (
-            <Tag
-              color="blue"
-              style={{ fontSize: 10, padding: '0 4px', marginRight: 4, lineHeight: '16px', height: 16 }}
-            >
-              新
-            </Tag>
+            <Tag color="blue" style={{ fontSize: 10, padding: '0 4px', marginRight: 4, lineHeight: '16px', height: 16 }}>新</Tag>
+          )}
+          {isHot && (
+            <Tag color="red" icon={<FireOutlined />} style={{ fontSize: 10, padding: '0 4px', marginRight: 4, lineHeight: '16px', height: 16 }}>爆款</Tag>
           )}
           {v.title}
         </div>
-        <div style={{ fontSize: 11, color: '#aaa' }}>
+        <div style={{ fontSize: 11, color: '#aaa', display: 'flex', gap: 8, alignItems: 'center' }}>
           {formatUploadDate(v.uploadDate)}
+          {v.viewCount ? (
+            <span style={{ color: '#888' }}>👁 {formatViewCount(v.viewCount)}</span>
+          ) : null}
         </div>
       </div>
 
@@ -182,6 +192,79 @@ const VideoRow: React.FC<VideoRowProps> = ({ v, onDownload, onDismiss }) => {
           </Tooltip>
         )}
       </Space>
+    </div>
+  )
+}
+
+// ---- 单条视频卡片（卡片模式） ----
+
+const VideoCard: React.FC<VideoRowProps> = ({ v, isHot, onDownload, onDismiss }) => {
+  const isNew = v.status === 'new'
+  return (
+    <div style={{
+      borderRadius: 8,
+      overflow: 'hidden',
+      border: `1px solid ${isNew ? '#d6e4ff' : '#f0f0f0'}`,
+      background: isNew ? '#f0f5ff' : '#fff',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      {/* 缩略图 */}
+      <div style={{ position: 'relative', paddingTop: '56.25%', background: '#e8e8e8' }}>
+        {v.thumbnail && (
+          <img
+            src={v.thumbnail}
+            alt=""
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+          />
+        )}
+        {v.duration && (
+          <div style={{
+            position: 'absolute', bottom: 4, right: 6,
+            fontSize: 10, color: '#fff', background: 'rgba(0,0,0,0.65)',
+            padding: '1px 4px', borderRadius: 2,
+          }}>
+            {formatDuration(v.duration)}
+          </div>
+        )}
+        {isNew && (
+          <div style={{
+            position: 'absolute', top: 4, left: 4,
+            background: '#1677ff', color: '#fff',
+            fontSize: 10, padding: '1px 5px', borderRadius: 3,
+          }}>新</div>
+        )}
+      </div>
+      {/* 内容 */}
+      <div style={{ padding: '8px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{
+          fontSize: 12, fontWeight: isNew ? 600 : 400, color: isNew ? '#1a1a1a' : '#555',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          overflow: 'hidden', lineHeight: '1.4',
+        }} title={v.title}>
+          {isHot && <FireOutlined style={{ color: '#f5222d', marginRight: 3, fontSize: 11 }} />}
+          {v.title}
+        </div>
+        <div style={{ fontSize: 11, color: '#aaa', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {formatUploadDate(v.uploadDate) && <span>{formatUploadDate(v.uploadDate)}</span>}
+          {v.viewCount ? <span>👁 {formatViewCount(v.viewCount)}</span> : null}
+        </div>
+        <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
+          <Tooltip title="加入批量下载">
+            <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => onDownload(v.url)} />
+          </Tooltip>
+          <Tooltip title="在浏览器打开">
+            <Button size="small" type="text" icon={<LinkOutlined />} onClick={() => window.open(v.url, '_blank')} />
+          </Tooltip>
+          {isNew && onDismiss && (
+            <Tooltip title="标为已读">
+              <Button size="small" type="text" icon={<EyeOutlined />} style={{ color: '#1677ff' }}
+                onClick={() => onDismiss(v.id, v.channelId)} />
+            </Tooltip>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -248,8 +331,8 @@ const GroupEditor: React.FC<GroupEditorProps> = ({ current, knownGroups, onSave 
 
 const Subscriptions: React.FC = () => {
   const [subs, setSubs] = useState<ChannelSubscription[]>([])
-  // 所有状态的视频（new + seen），用于卡片展示
   const [channelVideos, setChannelVideos] = useState<NewVideoItem[]>([])
+  const [videoSort, setVideoSort] = useState<'date' | 'views'>('date')
   const [loading, setLoading] = useState(false)
   const [checkingAll, setCheckingAll] = useState(false)
   const [checkingSubId, setCheckingSubId] = useState<string | null>(null)
@@ -260,6 +343,11 @@ const Subscriptions: React.FC = () => {
   const [viewSub, setViewSub] = useState<ChannelSubscription | null>(null)
   // 每个频道是否展开视频列表
   const [expandedChannels, setExpandedChannels] = useState<Set<string>>(new Set())
+  // 每个频道的视频视图模式：list | card
+  const [videoViewMode, setVideoViewMode] = useState<Record<string, 'list' | 'card'>>({})
+  const getViewMode = (id: string) => videoViewMode[id] ?? 'list'
+  const toggleViewMode = (id: string) =>
+    setVideoViewMode((prev) => ({ ...prev, [id]: prev[id] === 'card' ? 'list' : 'card' }))
 
   const interval = useDownloadStore((s) => s.appSettings.subscriptionCheckInterval || '6h')
   const updateSettings = useDownloadStore((s) => s.updateSettings)
@@ -533,7 +621,17 @@ const Subscriptions: React.FC = () => {
                 )}
                 <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                   {group.subs.map((sub) => {
-              const allVids = (videosByChannel[sub.id] || []).slice(0, 20)
+              const rawVids = (videosByChannel[sub.id] || []).slice(0, 20)
+              // 排序
+              const allVids = [...rawVids].sort((a, b) => {
+                if (videoSort === 'views') return (b.viewCount ?? 0) - (a.viewCount ?? 0)
+                return (b.uploadDate ?? '') > (a.uploadDate ?? '') ? 1 : -1
+              })
+              // 爆款阈值：频道均值 2x
+              const avgViews = allVids.length > 0
+                ? allVids.reduce((s, v) => s + (v.viewCount ?? 0), 0) / allVids.length
+                : 0
+              const hotThreshold = avgViews * 2
               const newVids = allVids.filter((v) => v.status === 'new')
               const isExpanded = expandedChannels.has(sub.id)
 
@@ -626,50 +724,72 @@ const Subscriptions: React.FC = () => {
                           <span style={{ color: '#aaa', marginLeft: 4 }}>({allVids.length} 条)</span>
                         </span>
                         {newVids.length > 0 && (
-                          <Tag
-                            color="blue"
-                            icon={<FireOutlined />}
-                            style={{ fontSize: 11, cursor: 'default' }}
-                          >
+                          <Tag color="blue" icon={<FireOutlined />} style={{ fontSize: 11, cursor: 'default' }}>
                             {newVids.length} 条新视频
                           </Tag>
                         )}
+                        {isExpanded && (
+                          <>
+                            <Select
+                              size="small"
+                              value={videoSort}
+                              onChange={setVideoSort}
+                              style={{ width: 100 }}
+                              options={[
+                                { label: '按日期', value: 'date' },
+                                { label: '按播放量', value: 'views' },
+                              ]}
+                            />
+                            <Tooltip title={getViewMode(sub.id) === 'list' ? '切换卡片视图' : '切换列表视图'}>
+                              <Button
+                                size="small"
+                                icon={getViewMode(sub.id) === 'list' ? <AppstoreOutlined /> : <UnorderedListOutlined />}
+                                onClick={() => toggleViewMode(sub.id)}
+                              />
+                            </Tooltip>
+                          </>
+                        )}
                         {newVids.length > 0 && isExpanded && (
                           <Space size={4} style={{ marginLeft: 'auto' }}>
-                            <Button
-                              size="small"
-                              type="link"
-                              icon={<DownloadOutlined />}
-                              style={{ padding: 0, fontSize: 12 }}
-                              onClick={() => handleAddToBatch(newVids.map((v) => v.url))}
-                            >
+                            <Button size="small" type="link" icon={<DownloadOutlined />} style={{ padding: 0, fontSize: 12 }}
+                              onClick={() => handleAddToBatch(newVids.map((v) => v.url))}>
                               全部下载新视频
                             </Button>
-                            <Button
-                              size="small"
-                              type="link"
-                              icon={<EyeOutlined />}
-                              style={{ padding: 0, fontSize: 12 }}
-                              onClick={() => handleClearChannel(sub.id)}
-                            >
+                            <Button size="small" type="link" icon={<EyeOutlined />} style={{ padding: 0, fontSize: 12 }}
+                              onClick={() => handleClearChannel(sub.id)}>
                               全部标记已读
                             </Button>
                           </Space>
                         )}
                       </div>
 
-                      {/* 视频行列表（展开时显示） */}
+                      {/* 视频列表（展开时显示） */}
                       {isExpanded && (
-                        <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                          {allVids.map((v) => (
-                            <VideoRow
-                              key={`${v.channelId}-${v.id}`}
-                              v={v}
-                              onDownload={(url) => handleAddToBatch([url])}
-                              onDismiss={handleDismiss}
-                            />
-                          ))}
-                        </Space>
+                        getViewMode(sub.id) === 'card' ? (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                            {allVids.map((v) => (
+                              <VideoCard
+                                key={`${v.channelId}-${v.id}`}
+                                v={v}
+                                isHot={hotThreshold > 0 && (v.viewCount ?? 0) >= hotThreshold}
+                                onDownload={(url) => handleAddToBatch([url])}
+                                onDismiss={handleDismiss}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                            {allVids.map((v) => (
+                              <VideoRow
+                                key={`${v.channelId}-${v.id}`}
+                                v={v}
+                                isHot={hotThreshold > 0 && (v.viewCount ?? 0) >= hotThreshold}
+                                onDownload={(url) => handleAddToBatch([url])}
+                                onDismiss={handleDismiss}
+                              />
+                            ))}
+                          </Space>
+                        )
                       )}
                     </div>
                   )}

@@ -248,6 +248,18 @@ const SingleDownload: React.FC = () => {
       appSettings.folderOrganize ?? 'none',
     )
 
+    // 磁盘空间预估检查（非阻塞，仅警告）
+    try {
+      const estimatedBytes = videoInfo.formats?.reduce((max, f) => Math.max(max, f.filesize || 0), 0) || 0
+      if (estimatedBytes > 0 && baseDir) {
+        const disk = await window.api.getDiskSpace(baseDir)
+        if (disk.available > 0 && estimatedBytes > disk.available) {
+          const toMB = (b: number) => (b / 1024 / 1024).toFixed(0)
+          messageApi.warning(`磁盘空间可能不足：预估 ${toMB(estimatedBytes)} MB，可用 ${toMB(disk.available)} MB`, 6)
+        }
+      }
+    } catch { /* 忽略磁盘检查失败 */ }
+
     // 监听进度
     const removeListener = window.api.onDownloadProgress((p) => {
       if (p.taskId === taskId) {

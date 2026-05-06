@@ -105,7 +105,9 @@ declare global {
     getDownloadsPath: () => Promise<string>
     showItemInFolder: (filepath: string) => Promise<void>
     openFile: (filepath: string) => Promise<string>
+    readTextFile: (filePath: string) => Promise<string>
     checkPaths: (paths: string[]) => Promise<Record<string, boolean>>
+    getDiskSpace: (dirPath: string) => Promise<{ available: number; total: number }>
     dbGetCompletedRecords: () => Promise<CompletedRecordRow[]>
     dbInsertCompletedRecord: (record: CompletedRecordRow) => Promise<void>
     dbDeleteCompletedRecord: (id: string) => Promise<void>
@@ -179,9 +181,29 @@ declare global {
       srtPaths?: string[]
       errorMessage?: string
     }>
+
+    // 选题灵感库
+    topicList: () => Promise<TopicIdea[]>
+    topicInsert: (row: TopicIdea) => Promise<void>
+    topicUpdate: (id: string, fields: Partial<TopicIdea>) => Promise<void>
+    topicDelete: (id: string) => Promise<void>
   }
 
   type CheckInterval = 'hourly' | '6h' | 'daily' | 'off'
+
+  type TopicStatus = 'pending' | 'planned' | 'filming' | 'published'
+
+  interface TopicIdea {
+    id: string
+    title: string
+    notes: string
+    ref_url: string
+    ref_title: string
+    ref_thumbnail: string
+    status: TopicStatus
+    created_at: number
+    updated_at: number
+  }
 
   interface VideoListItem {
     id: string
@@ -217,6 +239,7 @@ declare global {
     thumbnail: string
     uploadDate?: string
     duration?: number
+    viewCount?: number
     discoveredAt: number
     status: 'new' | 'dismissed'
   }
