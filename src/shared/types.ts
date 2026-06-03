@@ -70,6 +70,7 @@ export interface AppSettings {
   proxyPort?: string
   proxyUsername?: string
   proxyPassword?: string
+  douyinCookiesBrowser?: string    // 抖音专用浏览器 Cookie 来源，默认 'chrome'
 }
 
 // yt-dlp 相关类型
@@ -220,7 +221,7 @@ export interface NewVideoItem {
   duration?: number
   viewCount?: number
   discoveredAt: number
-  status: 'new' | 'dismissed'
+  status: 'new' | 'dismissed' | 'seen'
 }
 
 export type TaskStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'cookie_error'

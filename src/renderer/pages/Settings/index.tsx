@@ -87,6 +87,7 @@ const Settings: React.FC = () => {
     const values = form.getFieldsValue()
     updateSettings(values)
     window.api.setCookiesPath(values.cookiesPath || '').catch(() => {})
+    window.api.setDouyinBrowser(values.douyinCookiesBrowser || 'chrome').catch(() => {})
     message.success('设置已保存')
   }
 
@@ -149,6 +150,22 @@ const Settings: React.FC = () => {
               <Button icon={<SafetyCertificateOutlined />} onClick={handleSelectCookiesFile}>选择文件</Button>
               <Button type="primary" icon={<LoginOutlined />} onClick={handleLoginYouTube}>登录 YouTube</Button>
             </div>
+          </Form.Item>
+
+          <Form.Item
+            label="抖音 Cookie 来源"
+            name="douyinCookiesBrowser"
+            extra="抖音需要新鲜的浏览器 Cookie 才能下载，请选择您已登录抖音的浏览器。选「不使用」则依赖上方 Cookie 文件（通常会失败）。"
+          >
+            <Select style={{ width: 220 }}>
+              <Select.Option value="chrome">Chrome（推荐）</Select.Option>
+              <Select.Option value="edge">Microsoft Edge</Select.Option>
+              <Select.Option value="firefox">Firefox</Select.Option>
+              <Select.Option value="chromium">Chromium</Select.Option>
+              <Select.Option value="brave">Brave</Select.Option>
+              <Select.Option value="opera">Opera</Select.Option>
+              <Select.Option value="none">不使用浏览器 Cookie</Select.Option>
+            </Select>
           </Form.Item>
 
           <Form.Item label="默认视频清晰度" name="defaultFormat">

@@ -1,5 +1,4 @@
-import { spawn, exec } from 'child_process'
-import { execFile } from 'child_process'
+import { spawn, exec, execFile } from 'child_process'
 import { promisify } from 'util'
 import fs from 'fs'
 import path from 'path'
@@ -46,9 +45,7 @@ async function resolveJsRuntimeAsync(): Promise<{ kind: 'node' | 'deno'; path: s
   // 优先检测 Deno
   const deno = await whichAsync('deno')
   if (deno) return { kind: 'deno', path: deno }
-  // 检测 Node（已知路径优先）
-  const knownNode = 'C:\\Program Files\\nodejs\\node.exe'
-  if (fs.existsSync(knownNode)) return { kind: 'node', path: knownNode }
+  // 动态检测 Node（不硬编码路径，通过 where/which 解析）
   const node = await whichAsync('node')
   if (node) return { kind: 'node', path: node }
   return null
@@ -125,6 +122,28 @@ export function setCookiesPath(filePath: string): void {
   logInfo(`[ytdlp] cookies path updated: ${filePath || '(none)'}`)
 }
 
+// ────────── Douyin browser cookies (抖音需要新鲜 Cookie，直接读浏览器) ──────────
+
+let cachedDouyinBrowser = 'chrome'  // 默认 Chrome
+
+export function setDouyinCookiesBrowser(browser: string): void {
+  cachedDouyinBrowser = browser
+  logInfo(`[ytdlp] douyin cookies browser: ${browser || '(none)'}`)
+}
+
+/** 判断 URL 是否属于抖音平台 */
+function isDouyinUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url)
+    return hostname === 'douyin.com' ||
+           hostname.endsWith('.douyin.com') ||
+           hostname === 'iesdouyin.com' ||
+           hostname.endsWith('.iesdouyin.com')
+  } catch {
+    return false
+  }
+}
+
 // ────────── Proxy URL (set by renderer via IPC on startup / settings change) ──────────
 
 let cachedProxyUrl = ''
@@ -136,7 +155,7 @@ export function setProxyUrl(url: string): void {
 
 // ────────── Shared base args ──────────
 
-function buildBaseArgs(proxy?: string): string[] {
+function buildBaseArgs(proxy?: string, targetUrl?: string): string[] {
   const args: string[] = ['--no-warnings']
 
   // 显式传入的 proxy 优先；否则用全局缓存值
@@ -147,8 +166,12 @@ function buildBaseArgs(proxy?: string): string[] {
   if (js) args.push('--js-runtimes', `${js.kind}:${js.path}`)
   else console.warn('[ytdlp] No JS runtime found — YouTube n-challenge may fail')
 
-  // 有效 cookies 文件则传入，否则不加（无 cookie 直接下载公开内容）
-  if (cachedCookiesPath && fs.existsSync(cachedCookiesPath)) {
+  // 抖音需要新鲜浏览器 Cookie；其他平台使用 cookies 文件
+  if (targetUrl && isDouyinUrl(targetUrl)) {
+    if (cachedDouyinBrowser && cachedDouyinBrowser !== 'none') {
+      args.push('--cookies-from-browser', cachedDouyinBrowser)
+    }
+  } else if (cachedCookiesPath && fs.existsSync(cachedCookiesPath)) {
     args.push('--cookies', cachedCookiesPath)
   }
 
@@ -248,7 +271,7 @@ export async function parseVideo(url: string, proxy?: string, taskId?: string): 
     '--dump-single-json',
     '--no-playlist',
     '--skip-download',
-    ...buildBaseArgs(proxy),
+    ...buildBaseArgs(proxy, url),
     url
   ]
 
@@ -476,7 +499,7 @@ export function downloadVideo(
   const ytdlpPath = getYtdlpPath()
   const ffmpegPath = getFfmpegPath()
 
-  const args = [...buildBaseArgs(proxy)]
+  const args = [...buildBaseArgs(proxy, url)]
 
   if (subtitles?.enabled && subtitles.languages.length > 0) {
     args.push('--write-subs')

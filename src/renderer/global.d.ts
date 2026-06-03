@@ -120,6 +120,7 @@ declare global {
     selectDirectory: (defaultPath?: string) => Promise<string | undefined>
     selectFile: (filters?: { name: string; extensions: string[] }[]) => Promise<string | undefined>
     setCookiesPath: (filePath: string) => Promise<void>
+    setDouyinBrowser: (browser: string) => Promise<void>
     openLoginWindow: () => Promise<void>
     onCookiesPathUpdated: (callback: (filePath: string) => void) => () => void
     ytdlpUpdate: () => Promise<{ success: boolean; output: string }>
@@ -189,6 +190,7 @@ declare global {
     topicDelete: (id: string) => Promise<void>
   }
 
+  // CheckInterval 与 src/shared/types.ts 保持同步
   type CheckInterval = 'hourly' | '6h' | 'daily' | 'off'
 
   type TopicStatus = 'pending' | 'planned' | 'filming' | 'published'
@@ -241,7 +243,7 @@ declare global {
     duration?: number
     viewCount?: number
     discoveredAt: number
-    status: 'new' | 'dismissed'
+    status: 'new' | 'dismissed' | 'seen'
   }
 
   interface WhisperConfig {

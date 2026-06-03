@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } fro
 import path from 'path'
 import fs from 'fs'
 import { registerDownloadHandlers } from './ipc/download'
-import { detectYtdlp, cancelParse, killAllActive, setCookiesPath, setProxyUrl, getYtdlpPathPublic, fetchVideoList, extractSubtitles } from './services/ytdlp'
+import { detectYtdlp, cancelParse, killAllActive, setCookiesPath, setProxyUrl, setDouyinCookiesBrowser, getYtdlpPathPublic, fetchVideoList, extractSubtitles } from './services/ytdlp'
 import { applySessionProxy, buildProxyUrl, testAllSites, getIpInfo } from './services/network'
 import type { ProxyType } from '../shared/types'
 import { extractFrames, ffmpegReady } from './services/ffmpeg'
@@ -161,7 +161,7 @@ app.whenReady().then(async () => {
             const lines = stdout.trim().split('\n').filter(l => l.includes(','))
             const last = lines[lines.length - 1]?.split(',')
             if (last && last.length >= 3) {
-              resolve({ available: Number(last[1]) || 0, total: Number(last[2]) || 0 })
+              resolve({ available: parseInt(last[1].trim(), 10) || 0, total: parseInt(last[2].trim(), 10) || 0 })
             } else {
               resolve({ available: 0, total: 0 })
             }
@@ -284,6 +284,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('set-cookies-path', (_event, filePath: string) => {
     setCookiesPath(filePath)
+  })
+
+  ipcMain.handle('set-douyin-browser', (_event, browser: string) => {
+    setDouyinCookiesBrowser(browser)
   })
 
   // ---- 代理设置 ----

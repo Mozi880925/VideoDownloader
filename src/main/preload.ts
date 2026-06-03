@@ -21,7 +21,6 @@ import type {
 } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  ping: () => ipcRenderer.invoke('ping'),
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
@@ -29,11 +28,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 contextBridge.exposeInMainWorld('api', {
   /** 解析视频信息 */
-  parseVideo: (url: string, proxy?: string): Promise<VideoInfo> =>
+  parseVideo: (url: string, proxy?: string): Promise<TaskResult<VideoInfo>> =>
     ipcRenderer.invoke('parse-video', url, proxy),
 
   /** 搜索素材视频 */
-  searchVideos: (keyword: string, limit?: number, proxy?: string): Promise<SearchResult[]> =>
+  searchVideos: (keyword: string, limit?: number, proxy?: string): Promise<TaskResult<SearchResult[]>> =>
     ipcRenderer.invoke('search-videos', keyword, limit, proxy),
 
   /** 拉取频道/播放列表的视频列表（基于 yt-dlp --flat-playlist） */
@@ -46,8 +45,8 @@ contextBridge.exposeInMainWorld('api', {
     | { status: 'failed'; errorMessage: string }
   > => ipcRenderer.invoke('ytdlp:fetch-video-list', url, limit, proxy),
 
-  /** 开始下载（resolve 返回最终文件路径，reject 表示失败） */
-  downloadVideo: (options: DownloadOptions): Promise<string | undefined> =>
+  /** 开始下载，返回 TaskResult（status=success 时 data 为最终文件路径） */
+  downloadVideo: (options: DownloadOptions): Promise<TaskResult<string>> =>
     ipcRenderer.invoke('download-video', options),
 
   /** 取消下载 */
@@ -146,6 +145,10 @@ contextBridge.exposeInMainWorld('api', {
   /** 同步 cookies 文件路径到主进程 */
   setCookiesPath: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('set-cookies-path', filePath),
+
+  /** 设置抖音 Cookie 来源浏览器 */
+  setDouyinBrowser: (browser: string): Promise<void> =>
+    ipcRenderer.invoke('set-douyin-browser', browser),
 
   /** 打开 YouTube 登录窗口，关闭后自动导出 cookie */
   openLoginWindow: (): Promise<void> =>

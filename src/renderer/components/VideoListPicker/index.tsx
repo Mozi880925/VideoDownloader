@@ -74,7 +74,6 @@ const VideoListPicker: React.FC<VideoListPickerProps> = ({
   const [channelName, setChannelName] = useState<string | undefined>(undefined)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const proxy = useDownloadStore((s) => s.appSettings.cookiesPath ? '' : '') // 占位，后续如有 proxy 字段可读
   const commitBatchUrls = useDownloadStore((s) => s.commitBatchUrls)
 
   const handleFetch = useCallback(async (target?: string) => {
@@ -88,7 +87,8 @@ const VideoListPicker: React.FC<VideoListPickerProps> = ({
     setChannelName(undefined)
     setSelectedIds(new Set())
     try {
-      const r = await window.api.fetchVideoList(u, limit, proxy || undefined)
+      // proxy 由主进程 cachedProxyUrl 统一管理，传 undefined 即可
+      const r = await window.api.fetchVideoList(u, limit, undefined)
       if (r.status === 'success') {
         setVideos(r.data.videos)
         setChannelName(r.data.channelName)
@@ -101,7 +101,7 @@ const VideoListPicker: React.FC<VideoListPickerProps> = ({
     } finally {
       setLoading(false)
     }
-  }, [url, limit, proxy])
+  }, [url, limit])
 
   useEffect(() => {
     if (autoFetch && initialUrl) {

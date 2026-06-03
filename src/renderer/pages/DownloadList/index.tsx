@@ -948,23 +948,18 @@ const DownloadList: React.FC = () => {
     if (urls.length > 0) commitBatchUrls(urls)
   }, [filteredFailed, commitBatchUrls])
 
-  // 文件存在性检测：completedRecords 变化时批量探测一次
+  // 文件存在性检测：仅检测尚未探测过的路径，避免每次 completedRecords 变化时全量重扫
   const [fileExists, setFileExists] = useState<Record<string, boolean>>({})
+  const checkedPathsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const paths = Array.from(
-      new Set(
-        completedRecords
-          .map((r) => r.filepath)
-          .filter((p): p is string => typeof p === 'string' && p.length > 0),
-      ),
-    )
-    if (paths.length === 0) {
-      setFileExists({})
-      return
-    }
+    const newPaths = completedRecords
+      .map((r) => r.filepath)
+      .filter((p): p is string => typeof p === 'string' && p.length > 0 && !checkedPathsRef.current.has(p))
+    if (newPaths.length === 0) return
+    newPaths.forEach((p) => checkedPathsRef.current.add(p))
     let cancelled = false
-    window.api.checkPaths(paths).then((res) => {
-      if (!cancelled) setFileExists(res ?? {})
+    window.api.checkPaths(newPaths).then((res) => {
+      if (!cancelled && res) setFileExists((prev) => ({ ...prev, ...res }))
     }).catch(() => {})
     return () => { cancelled = true }
   }, [completedRecords])

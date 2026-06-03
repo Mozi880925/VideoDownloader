@@ -40,6 +40,7 @@ import {
 } from '../../store/downloadStore'
 import { friendlyError } from '../../../shared/errorTranslator'
 import { buildOutputPath } from '../../utils/buildOutputPath'
+import { extractAllUrls } from '../../../shared/extractUrls'
 
 // ---- 工具函数 ----
 
@@ -47,30 +48,27 @@ function generateId(): string {
   return `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+const VALID_DOMAINS = [
+  'youtube.com', 'youtu.be',
+  'tiktok.com',
+  'bilibili.com', 'b23.tv',
+  'douyin.com', 'v.douyin.com', 'iesdouyin.com',
+  'xiaohongshu.com', 'xhslink.com',
+  'instagram.com',
+  'twitter.com', 'x.com',
+  'facebook.com', 'fb.watch',
+]
+
 function parseUrls(text: string): string[] {
-  const urlRegex = /https?:\/\/[^\s"<>]+/gi
-  const matches = text.match(urlRegex) || []
-
-  const validDomains = [
-    'youtube.com', 'youtu.be',
-    'tiktok.com',
-    'bilibili.com', 'b23.tv',
-    'douyin.com', 'iesdouyin.com',
-    'xiaohongshu.com',
-  ]
-
-  const validUrls = matches
-    .map((url) => url.replace(/[)\]}'",.:;?!]+$/, '')) // 剔除末尾可能误捕获的中文或英文标点
-    .filter((url) => {
-      try {
-        const parsed = new URL(url)
-        return validDomains.some((domain) => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`))
-      } catch {
-        return false
-      }
-    })
-
-  return Array.from(new Set(validUrls))
+  // extractAllUrls 已正确处理分享口令末尾中文，无需额外清理
+  return extractAllUrls(text).filter((url) => {
+    try {
+      const parsed = new URL(url)
+      return VALID_DOMAINS.some((d) => parsed.hostname === d || parsed.hostname.endsWith(`.${d}`))
+    } catch {
+      return false
+    }
+  })
 }
 
 function formatDuration(seconds?: number): string {

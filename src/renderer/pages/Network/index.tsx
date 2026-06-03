@@ -198,7 +198,7 @@ const Network: React.FC = () => {
     setProxyUsername(appSettings.proxyUsername ?? '')
     setProxyPassword(appSettings.proxyPassword ?? '')
     setSavedType(appSettings.proxyType ?? 'none')
-  }, [appSettings.proxyType, appSettings.proxyHost, appSettings.proxyPort])
+  }, [appSettings.proxyType, appSettings.proxyHost, appSettings.proxyPort, appSettings.proxyUsername, appSettings.proxyPassword])
 
   const needsHostPort = proxyType === 'http' || proxyType === 'socks5'
 

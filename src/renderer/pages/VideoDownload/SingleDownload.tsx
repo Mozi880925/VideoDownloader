@@ -30,6 +30,7 @@ import {
 } from '@ant-design/icons'
 import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
 import { friendlyError } from '../../../shared/errorTranslator'
+import { extractFirstUrl, extractUrls } from '../../../shared/extractUrls'
 import { buildOutputPath } from '../../utils/buildOutputPath'
 
 // ---- 工具函数 ----
@@ -163,7 +164,8 @@ const SingleDownload: React.FC = () => {
 
   // ---- 核心解析逻辑 ----
   const doParse = async (targetUrl: string) => {
-    const trimmed = targetUrl.trim()
+    // 支持抖音/小红书等平台的分享口令格式（含垃圾文本的分享消息）
+    const trimmed = extractFirstUrl(targetUrl)
     if (!trimmed) {
       messageApi.warning('请输入视频链接')
       return
@@ -348,7 +350,7 @@ const SingleDownload: React.FC = () => {
         <div style={{ display: 'flex', gap: 8 }}>
           <Input
             size="large"
-            placeholder="粘贴视频链接，支持 YouTube、TikTok、Bilibili、小红书、抖音等..."
+            placeholder="粘贴视频链接或抖音/小红书分享口令，回车解析..."
             value={url}
             onChange={(e) => {
               const v = e.target.value
@@ -360,6 +362,22 @@ const SingleDownload: React.FC = () => {
                 setProgress(null)
                 setDownloadDone(false)
                 setFinalFilepath(undefined)
+              }
+            }}
+            onPaste={(e) => {
+              const raw = e.clipboardData.getData('text')
+              if (!raw) return
+              const urls = extractUrls(raw)
+              // 只有当粘贴的文本里含有 URL 且原文不是纯 URL 时，才自动净化
+              if (urls.length > 0 && urls[0] !== raw.trim()) {
+                e.preventDefault()
+                setUrl(urls[0])
+                messageApi.success({
+                  content: `已从分享口令提取链接：${urls[0]}`,
+                  duration: 3,
+                })
+                // 延迟一帧后自动触发解析
+                setTimeout(() => doParse(urls[0]), 50)
               }
             }}
             onPressEnter={handleParse}

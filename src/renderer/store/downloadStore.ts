@@ -120,7 +120,7 @@ export function detectPlatform(url: string): string {
   if (u.includes('tiktok.com')) return 'TikTok'
   if (u.includes('bilibili.com') || u.includes('b23.tv')) return 'Bilibili'
   if (u.includes('instagram.com')) return 'Instagram'
-  if (u.includes('douyin.com')) return '抖音'
+  if (u.includes('douyin.com') || u.includes('iesdouyin.com')) return '抖音'
   if (u.includes('xiaohongshu.com') || u.includes('xhslink.com')) return '小红书'
   if (u.includes('twitter.com') || u.includes('x.com')) return 'Twitter/X'
   if (u.includes('facebook.com') || u.includes('fb.watch')) return 'Facebook'
@@ -168,6 +168,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       maxConcurrentDownloads: 3,
       folderOrganize: 'none',
       proxyType: 'none',
+      douyinCookiesBrowser: 'chrome',
       proxyHost: '',
       proxyPort: '',
     }
@@ -281,41 +282,43 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       ),
     })),
 
-  completeTask: (taskId, filepath) =>
-    set((state) => {
-      const task = state.activeTasks.find((t) => t.taskId === taskId)
-      if (!task) return state
-      const completedAt = Date.now()
-
-      window.api.dbInsertCompletedRecord({
-        id: task.taskId,
-        title: task.title,
-        thumbnail: task.thumbnail,
-        platform: task.platform,
-        url: task.url,
-        filepath,
-        completed_at: completedAt,
-        status: 'completed',
-        tags: '',
-      }).catch((err: unknown) => console.error('[store] db insert completed failed:', err))
-
-      return {
-        activeTasks: state.activeTasks.filter((t) => t.taskId !== taskId),
-        completedRecords: [
-          {
-            taskId: task.taskId,
-            url: task.url,
-            title: task.title,
-            thumbnail: task.thumbnail,
-            platform: task.platform,
-            filepath,
-            completedAt,
-            tags: [],
-          },
-          ...state.completedRecords,
-        ],
-      }
-    }),
+  completeTask: (taskId, filepath) => {
+    const task = get().activeTasks.find((t) => t.taskId === taskId)
+    if (!task) return
+    const completedAt = Date.now()
+    const record = {
+      taskId: task.taskId,
+      url: task.url,
+      title: task.title,
+      thumbnail: task.thumbnail,
+      platform: task.platform,
+      filepath,
+      completedAt,
+      tags: [] as string[],
+    }
+    // 乐观更新 state
+    set((s) => ({
+      activeTasks: s.activeTasks.filter((t) => t.taskId !== taskId),
+      completedRecords: [record, ...s.completedRecords],
+    }))
+    // 持久化到 DB；失败时回滚
+    window.api.dbInsertCompletedRecord({
+      id: task.taskId,
+      title: task.title,
+      thumbnail: task.thumbnail,
+      platform: task.platform,
+      url: task.url,
+      filepath,
+      completed_at: completedAt,
+      status: 'completed',
+      tags: '',
+    }).catch((err: unknown) => {
+      console.error('[store] db insert completed failed, rolling back:', err)
+      set((s) => ({
+        completedRecords: s.completedRecords.filter((r) => r.taskId !== taskId),
+      }))
+    })
+  },
 
   failTask: (taskId, rawErrorMessage) =>
     set((state) => {

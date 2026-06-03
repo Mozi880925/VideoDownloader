@@ -6,11 +6,13 @@ import {
   DownloadOutlined,
   FolderOpenOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
+import { formatDuration } from '../../utils/format'
 
 // ────────── 类型 ──────────
 
-type TaskStatus = 'pending' | 'processing' | 'completed' | 'failed'
+// 注意：ExtractStatus 与 shared/types.ts 的 TaskStatus 语义不同，特意区分命名
+type ExtractStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 interface ExtractTask {
   id: string
@@ -18,27 +20,9 @@ interface ExtractTask {
   title: string
   duration?: number
   addedAt: number
-  status: TaskStatus
+  status: ExtractStatus
   srtPaths?: string[]
   errorMessage?: string
-}
-
-// ────────── 工具 ──────────
-
-function formatDuration(seconds?: number): string {
-  if (!seconds) return '-'
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-function detectPlatform(url: string): string {
-  const u = url.toLowerCase()
-  if (u.includes('youtube') || u.includes('youtu.be')) return 'YouTube'
-  if (u.includes('bilibili') || u.includes('b23.tv')) return 'BiliBili'
-  if (u.includes('tiktok')) return 'TikTok'
-  if (u.includes('douyin')) return '抖音'
-  return '其他'
 }
 
 // ────────── 状态标签 ──────────
@@ -71,7 +55,7 @@ const SubtitleExtract: React.FC = () => {
       if (!raw) return []
       const parsed = JSON.parse(raw) as ExtractTask[]
       return parsed.map(t => t.status === 'processing'
-        ? { ...t, status: 'failed' as TaskStatus, errorMessage: '页面切换导致中断，请重新提取' }
+        ? { ...t, status: 'failed' as ExtractStatus, errorMessage: '页面切换导致中断，请重新提取' }
         : t)
     } catch { return [] }
   })
@@ -79,7 +63,6 @@ const SubtitleExtract: React.FC = () => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)) } catch {}
   }, [tasks])
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
   const processingRef = useRef(false)
 
   // ── 今日提取计数（持久化在 localStorage） ──
@@ -138,10 +121,10 @@ const SubtitleExtract: React.FC = () => {
     setTasks(prev => [...prev, ...newTasks])
     setUrlText('')
 
-    // 输出目录：用户设置的下载目录下的 subtitles 子目录
+    // 输出目录：用户设置的下载目录下的 subtitles 子目录（路径拼接交由主进程处理）
     const downloadPath = appSettings.downloadPath || await window.api.getDownloadsPath()
-    // 直接拼接（前端拼路径）
-    const outputDir = `${downloadPath}\\subtitles`
+    const sep = downloadPath.includes('/') ? '/' : '\\'
+    const outputDir = `${downloadPath}${sep}subtitles`
 
     processingRef.current = true
     for (const task of newTasks) {
@@ -177,7 +160,6 @@ const SubtitleExtract: React.FC = () => {
 
   const handleRemove = (id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id))
-    setSelectedRowKeys(prev => prev.filter(k => k !== id))
   }
 
   const handleOpenSrt = async (path?: string) => {
@@ -326,10 +308,6 @@ const SubtitleExtract: React.FC = () => {
           dataSource={filteredTasks}
           columns={columns}
           rowKey="id"
-          rowSelection={{
-            selectedRowKeys,
-            onChange: setSelectedRowKeys,
-          }}
           pagination={false}
           size="middle"
           locale={{

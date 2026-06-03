@@ -12,10 +12,12 @@ import {
   CloseOutlined,
 } from '@ant-design/icons'
 import { useDownloadStore } from '../../store/downloadStore'
+import { formatDuration } from '../../utils/format'
 
 // ────────── 类型 ──────────
 
-type TaskStatus = 'pending' | 'processing' | 'completed' | 'failed'
+// 注意：此处 TranscribeStatus 与 shared/types.ts 的 TaskStatus 语义不同，特意区分命名
+type TranscribeStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 interface TranscribeTask {
   id: string
@@ -24,19 +26,10 @@ interface TranscribeTask {
   sourcePath: string       // URL 或本地文件路径
   addedAt: number
   duration?: number        // 秒
-  status: TaskStatus
+  status: TranscribeStatus
   progress: number         // 0-100
   outputPath?: string      // 生成的 .srt 路径
   errorMessage?: string
-}
-
-// ────────── 工具 ──────────
-
-function formatDuration(seconds?: number): string {
-  if (!seconds) return '-'
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${String(s).padStart(2, '0')}`
 }
 
 function shortPath(p: string): string {
@@ -85,7 +78,7 @@ const Transcription: React.FC = () => {
       const parsed = JSON.parse(raw) as TranscribeTask[]
       // 切页时正在处理中的任务，主进程已经被中断，标记为失败
       return parsed.map(t => t.status === 'processing'
-        ? { ...t, status: 'failed' as TaskStatus, errorMessage: '页面切换导致中断，请重新转录' }
+        ? { ...t, status: 'failed' as TranscribeStatus, errorMessage: '页面切换导致中断，请重新转录' }
         : t)
     } catch { return [] }
   })
@@ -297,7 +290,7 @@ const Transcription: React.FC = () => {
 
     processingRef.current = false
     message.success('所有任务处理完成')
-  }, [tasks, appSettings.whisper])
+  }, [tasks, appSettings.whisper, pendingFiles, urlText, tab])
 
   // ── 操作 ──
 
