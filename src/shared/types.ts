@@ -31,6 +31,36 @@ export interface WhisperConfig {
 
 export type FolderOrganize = 'none' | 'by-date' | 'by-channel' | 'by-channel-date'
 
+// ────────── LLM（OpenAI 兼容 API）──────────
+
+export interface LlmConfig {
+  baseUrl: string   // 例：https://api.deepseek.com/v1
+  apiKey: string
+  model: string     // 例：deepseek-chat
+}
+
+/** 标题拆解的输入：目标视频 + 同频道近期视频做对照 */
+export interface TitleAnalysisInput {
+  title: string
+  viewCount?: number
+  channelName?: string
+  siblings: { title: string; viewCount?: number }[]
+}
+
+/** LLM 输出的结构化拆解结果 */
+export interface TitleAnalysis {
+  structure: string       // 标题结构拆解
+  hooks: string[]         // 使用的钩子/技巧
+  emotion: string         // 情绪触发点
+  templates: string[]     // 可复用的标题模板
+  suggestions: string[]   // 给用户的选题建议
+}
+
+export interface TitleAnalysisResult {
+  raw: string             // LLM 原始回复（解析失败时兜底展示）
+  parsed?: TitleAnalysis
+}
+
 export type ProxyType = 'none' | 'system' | 'http' | 'socks5'
 
 export interface NetworkTestResult {
@@ -71,6 +101,7 @@ export interface AppSettings {
   proxyUsername?: string
   proxyPassword?: string
   douyinCookiesBrowser?: string    // 抖音专用浏览器 Cookie 来源，默认 'chrome'
+  llm?: LlmConfig                  // AI 分析用的 OpenAI 兼容 API 配置
 }
 
 // yt-dlp 相关类型

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Card, Form, Select, Switch, Button, message, Input, InputNumber, Tag, Spin } from 'antd'
-import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined, RobotOutlined, ApiOutlined } from '@ant-design/icons'
 import { useDownloadStore } from '../../store/downloadStore'
 
 const SUB_LANG_OPTIONS = [
@@ -28,6 +28,8 @@ const Settings: React.FC = () => {
   const [updating, setUpdating] = useState(false)
   const [updateOutput, setUpdateOutput] = useState('')
   const [updateResult, setUpdateResult] = useState<'updated' | 'latest' | null>(null)
+  const [llmTesting, setLlmTesting] = useState(false)
+  const [llmTestResult, setLlmTestResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   useEffect(() => {
     form.setFieldsValue(appSettings)
@@ -88,7 +90,8 @@ const Settings: React.FC = () => {
     updateSettings(values)
     window.api.setCookiesPath(values.cookiesPath || '').catch(() => {})
     window.api.setDouyinBrowser(values.douyinCookiesBrowser || 'chrome').catch(() => {})
-    message.success('设置已保存')
+    // key 去重：文本输入逐字触发时不堆叠提示
+    message.success({ content: '设置已保存', key: 'settings-saved' })
   }
 
   const handleSelectPath = async () => {
@@ -116,6 +119,23 @@ const Settings: React.FC = () => {
 
   const handleOpenLogs = async () => {
     await window.api.openLogsFolder()
+  }
+
+  const handleTestLlm = async () => {
+    const llm = form.getFieldValue('llm') as LlmConfig | undefined
+    if (!llm?.baseUrl?.trim() || !llm?.apiKey?.trim() || !llm?.model?.trim()) {
+      message.warning('请先填写 Base URL、API Key 和模型名称')
+      return
+    }
+    setLlmTesting(true)
+    setLlmTestResult(null)
+    try {
+      const r = await window.api.llmTest(llm)
+      setLlmTestResult(r)
+      if (r.ok) message.success('连接成功')
+    } finally {
+      setLlmTesting(false)
+    }
   }
 
   return (
@@ -261,6 +281,43 @@ const Settings: React.FC = () => {
             <Switch checkedChildren="开启" unCheckedChildren="关闭" />
           </Form.Item>
 
+          <div style={{ borderTop: '1px dashed #eee', margin: '8px 0 16px' }} />
+
+          <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>
+            <RobotOutlined style={{ marginRight: 6, color: '#1677ff' }} />
+            AI 分析（LLM）
+          </div>
+
+          <Form.Item
+            label="API Base URL"
+            name={['llm', 'baseUrl']}
+            extra="OpenAI 兼容接口地址，支持 DeepSeek / Moonshot / OpenAI / 各类中转站。例：https://api.deepseek.com/v1"
+          >
+            <Input placeholder="https://api.deepseek.com/v1" />
+          </Form.Item>
+
+          <Form.Item label="API Key" name={['llm', 'apiKey']}>
+            <Input.Password placeholder="sk-..." autoComplete="off" />
+          </Form.Item>
+
+          <Form.Item
+            label="模型名称"
+            name={['llm', 'model']}
+            extra="例：deepseek-chat / gpt-4o-mini / moonshot-v1-8k"
+          >
+            <Input placeholder="deepseek-chat" style={{ width: 280 }} />
+          </Form.Item>
+
+          <Form.Item>
+            <Button icon={<ApiOutlined />} loading={llmTesting} onClick={handleTestLlm}>
+              测试连接
+            </Button>
+            {llmTestResult && (
+              <span style={{ marginLeft: 12, fontSize: 12, color: llmTestResult.ok ? '#52c41a' : '#ff4d4f' }}>
+                {llmTestResult.message}
+              </span>
+            )}
+          </Form.Item>
         </Form>
       </Card>
 

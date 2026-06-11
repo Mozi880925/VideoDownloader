@@ -183,11 +183,48 @@ declare global {
       errorMessage?: string
     }>
 
+    // LLM（AI 分析）
+    llmTest: (cfg: LlmConfig) => Promise<{ ok: boolean; message: string }>
+    llmAnalyzeTitle: (
+      cfg: LlmConfig,
+      input: TitleAnalysisInput,
+    ) => Promise<
+      | { status: 'success'; data: TitleAnalysisResult }
+      | { status: 'failed'; errorMessage: string }
+    >
+
     // 选题灵感库
     topicList: () => Promise<TopicIdea[]>
     topicInsert: (row: TopicIdea) => Promise<void>
     topicUpdate: (id: string, fields: Partial<TopicIdea>) => Promise<void>
     topicDelete: (id: string) => Promise<void>
+  }
+
+  // LLM 相关类型，与 src/shared/types.ts 保持同步
+  interface LlmConfig {
+    baseUrl: string
+    apiKey: string
+    model: string
+  }
+
+  interface TitleAnalysisInput {
+    title: string
+    viewCount?: number
+    channelName?: string
+    siblings: { title: string; viewCount?: number }[]
+  }
+
+  interface TitleAnalysis {
+    structure: string
+    hooks: string[]
+    emotion: string
+    templates: string[]
+    suggestions: string[]
+  }
+
+  interface TitleAnalysisResult {
+    raw: string
+    parsed?: TitleAnalysis
   }
 
   // CheckInterval 与 src/shared/types.ts 保持同步

@@ -7,6 +7,7 @@ import { applySessionProxy, buildProxyUrl, testAllSites, getIpInfo } from './ser
 import type { ProxyType } from '../shared/types'
 import { extractFrames, ffmpegReady } from './services/ffmpeg'
 import { transcribeVideo, cancelTranscribe, killAllTranscribes, whisperReady } from './services/whisper'
+import { testLlm, analyzeTitle } from './services/llm'
 import {
   addSubscription,
   listSubscriptions,
@@ -23,7 +24,7 @@ import {
   startScheduler,
   stopScheduler,
 } from './services/subscription'
-import type { FrameExtractOptions, TranscribeOptions, WhisperConfig, TaskResult, TranscribeResult, CheckInterval, NewVideoItem } from '../shared/types'
+import type { FrameExtractOptions, TranscribeOptions, WhisperConfig, TaskResult, TranscribeResult, CheckInterval, NewVideoItem, LlmConfig, TitleAnalysisInput } from '../shared/types'
 import {
   initDb,
   closeDb,
@@ -246,6 +247,19 @@ app.whenReady().then(async () => {
     } catch (err) {
       console.error('[db] clear all failed failed:', err)
       return 0
+    }
+  })
+
+  // ---- LLM（AI 分析）IPC ----
+  ipcMain.handle('llm:test', async (_e, cfg: LlmConfig) => testLlm(cfg))
+  ipcMain.handle('llm:analyze-title', async (_e, cfg: LlmConfig, input: TitleAnalysisInput) => {
+    try {
+      const data = await analyzeTitle(cfg, input)
+      return { status: 'success', data }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[llm] analyze title failed:', msg)
+      return { status: 'failed', errorMessage: msg }
     }
   })
 

@@ -171,6 +171,11 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
       douyinCookiesBrowser: 'chrome',
       proxyHost: '',
       proxyPort: '',
+      llm: {
+        baseUrl: '',
+        apiKey: '',
+        model: '',
+      },
     }
     try {
       const s = localStorage.getItem('vdownload_settings')
@@ -181,6 +186,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
           ...saved,
           subtitles: { ...defaultSettings.subtitles!, ...(saved.subtitles ?? {}) },
           whisper: { ...defaultSettings.whisper!, ...(saved.whisper ?? {}) },
+          llm: { ...defaultSettings.llm!, ...(saved.llm ?? {}) },
         }
       }
     } catch {}

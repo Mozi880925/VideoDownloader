@@ -18,6 +18,9 @@ import type {
   VideoListResult,
   NetworkTestResult,
   IpInfo,
+  LlmConfig,
+  TitleAnalysisInput,
+  TitleAnalysisResult,
 } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -280,6 +283,18 @@ contextBridge.exposeInMainWorld('api', {
     srtPaths?: string[]
     errorMessage?: string
   }> => ipcRenderer.invoke('extract-subtitles', url, outputDir, langs),
+
+  // ---- LLM（AI 分析） ----
+  llmTest: (cfg: LlmConfig): Promise<{ ok: boolean; message: string }> =>
+    ipcRenderer.invoke('llm:test', cfg),
+
+  llmAnalyzeTitle: (
+    cfg: LlmConfig,
+    input: TitleAnalysisInput,
+  ): Promise<
+    | { status: 'success'; data: TitleAnalysisResult }
+    | { status: 'failed'; errorMessage: string }
+  > => ipcRenderer.invoke('llm:analyze-title', cfg, input),
 
   // ---- 选题灵感库 ----
   topicList: (): Promise<unknown[]> => ipcRenderer.invoke('topic:list'),

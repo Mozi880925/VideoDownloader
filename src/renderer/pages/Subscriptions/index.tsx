@@ -6,6 +6,7 @@ import VideoListPicker from '../../components/VideoListPicker'
 import type { CheckInterval } from '../../../shared/types'
 import ChannelList from './ChannelList'
 import VideoFeed, { type FeedFilter, type FeedSort, type FeedViewMode } from './VideoFeed'
+import TitleAnalysisModal from './TitleAnalysisModal'
 
 // ────────── 频道订阅（双栏布局：左侧频道列表 + 右侧视频流） ──────────
 
@@ -40,6 +41,13 @@ const Subscriptions: React.FC = () => {
   const [groupEditSub, setGroupEditSub] = useState<ChannelSubscription | null>(null)
   const [groupVal, setGroupVal] = useState('')
 
+  // ── AI 标题拆解 ──
+  const [analyzeTarget, setAnalyzeTarget] = useState<NewVideoItem | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<TitleAnalysisResult | null>(null)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+
+  const llmConfig = useDownloadStore((s) => s.appSettings.llm)
   const interval = useDownloadStore((s) => s.appSettings.subscriptionCheckInterval || '6h')
   const updateSettings = useDownloadStore((s) => s.updateSettings)
   const commitBatchUrls = useDownloadStore((s) => s.commitBatchUrls)
@@ -290,6 +298,35 @@ const Subscriptions: React.FC = () => {
     message.success('已发送到批量下载')
   }
 
+  const runAnalysis = useCallback(async (v: NewVideoItem) => {
+    if (!llmConfig?.baseUrl?.trim() || !llmConfig?.apiKey?.trim() || !llmConfig?.model?.trim()) {
+      message.warning('请先到「设置 → AI 分析（LLM）」配置 API')
+      return
+    }
+    setAnalyzeTarget(v)
+    setAnalyzing(true)
+    setAnalysisResult(null)
+    setAnalysisError(null)
+    try {
+      // 同频道近期视频做对照（排除目标视频自身）
+      const siblings = (videosByChannel[v.channelId] ?? [])
+        .filter((s) => s.id !== v.id)
+        .map((s) => ({ title: s.title, viewCount: s.viewCount }))
+      const r = await window.api.llmAnalyzeTitle(llmConfig, {
+        title: v.title,
+        viewCount: v.viewCount,
+        channelName: channelNames[v.channelId],
+        siblings,
+      })
+      if (r.status === 'success') setAnalysisResult(r.data)
+      else setAnalysisError(r.errorMessage || '分析失败')
+    } catch (err) {
+      setAnalysisError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAnalyzing(false)
+    }
+  }, [llmConfig, videosByChannel, channelNames])
+
   const handleDownloadAllNew = () => {
     const urls = scopeVideos.filter((v) => v.status === 'new').map((v) => v.url)
     if (urls.length === 0) { message.info('当前没有新视频'); return }
@@ -373,6 +410,7 @@ const Subscriptions: React.FC = () => {
           onSortChange={setSort}
           onViewModeChange={setViewMode}
           onCheck={() => (feedMode === 'all' ? handleCheckAll() : handleCheckOne(selectedChannelId))}
+          onAnalyzeVideo={runAnalysis}
           onDownloadVideo={handleDownloadVideo}
           onDownloadAllNew={handleDownloadAllNew}
           onMarkAllRead={handleMarkAllRead}
@@ -439,6 +477,17 @@ const Subscriptions: React.FC = () => {
           allowClear
         />
       </Modal>
+
+      {/* AI 标题拆解 Modal */}
+      <TitleAnalysisModal
+        video={analyzeTarget}
+        channelName={analyzeTarget ? channelNames[analyzeTarget.channelId] : undefined}
+        loading={analyzing}
+        result={analysisResult}
+        error={analysisError}
+        onClose={() => setAnalyzeTarget(null)}
+        onRetry={() => analyzeTarget && runAnalysis(analyzeTarget)}
+      />
 
       {/* 浏览频道全部视频 Modal */}
       <Modal
