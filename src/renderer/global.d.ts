@@ -199,10 +199,24 @@ declare global {
     llmAnalyzeTitle: (
       cfg: LlmConfig,
       input: TitleAnalysisInput,
+      save?: { videoId: string; channelId: string },
     ) => Promise<
       | { status: 'success'; data: TitleAnalysisResult }
       | { status: 'failed'; errorMessage: string }
     >
+    llmAnalyzeChannel: (
+      cfg: LlmConfig,
+      input: ChannelAnalysisInput,
+    ) => Promise<
+      | { status: 'success'; data: ChannelAnalysisResult }
+      | { status: 'failed'; errorMessage: string }
+    >
+    llmSetConfig: (cfg: LlmConfig | null, autoAnalyzeHot: boolean) => Promise<void>
+    analysisGet: (videoId: string, channelId: string) => Promise<VideoAnalysisRecord | null>
+    analysisKeys: () => Promise<{ videoId: string; channelId: string }[]>
+    onAnalysisAutoDone: (
+      callback: (info: { channelId: string; channelName: string; videoId: string; videoTitle: string }) => void,
+    ) => () => void
 
     // 选题灵感库
     topicList: () => Promise<TopicIdea[]>
@@ -242,6 +256,34 @@ declare global {
     title: string
     language: string
     text: string
+    createdAt: number
+  }
+
+  interface ChannelAnalysisInput {
+    channelName: string
+    videos: { title: string; viewCount?: number; uploadDate?: string }[]
+  }
+
+  interface ChannelAnalysis {
+    formula: string
+    patterns: string[]
+    weaknesses: string
+    templates: string[]
+    suggestions: string[]
+  }
+
+  interface ChannelAnalysisResult {
+    raw: string
+    parsed?: ChannelAnalysis
+  }
+
+  interface VideoAnalysisRecord {
+    videoId: string
+    channelId: string
+    title: string
+    result: TitleAnalysisResult
+    usedOpening: boolean
+    auto: boolean
     createdAt: number
   }
 

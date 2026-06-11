@@ -63,6 +63,37 @@ export interface TitleAnalysisResult {
   parsed?: TitleAnalysis
 }
 
+/** 频道级标题规律分析的输入 */
+export interface ChannelAnalysisInput {
+  channelName: string
+  videos: { title: string; viewCount?: number; uploadDate?: string }[]
+}
+
+/** LLM 输出的频道标题规律报告 */
+export interface ChannelAnalysis {
+  formula: string         // 该频道的标题公式总结
+  patterns: string[]      // 高播放标题的共性规律
+  weaknesses: string      // 低播放标题的常见问题
+  templates: string[]     // 可复用的标题模板
+  suggestions: string[]   // 给用户的选题建议
+}
+
+export interface ChannelAnalysisResult {
+  raw: string
+  parsed?: ChannelAnalysis
+}
+
+/** 已持久化的单视频拆解记录 */
+export interface VideoAnalysisRecord {
+  videoId: string
+  channelId: string
+  title: string
+  result: TitleAnalysisResult
+  usedOpening: boolean
+  auto: boolean           // 是否由爆款自动触发
+  createdAt: number
+}
+
 /** 视频文案（从字幕提取的纯文本） */
 export interface VideoTranscript {
   videoId: string
@@ -115,6 +146,7 @@ export interface AppSettings {
   proxyPassword?: string
   douyinCookiesBrowser?: string    // 抖音专用浏览器 Cookie 来源，默认 'chrome'
   llm?: LlmConfig                  // AI 分析用的 OpenAI 兼容 API 配置
+  autoAnalyzeHot?: boolean         // 检查订阅时自动 AI 拆解爆款新视频，默认 false
 }
 
 // yt-dlp 相关类型

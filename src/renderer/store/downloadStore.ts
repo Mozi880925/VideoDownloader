@@ -176,6 +176,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
         apiKey: '',
         model: '',
       },
+      autoAnalyzeHot: false,
     }
     try {
       const s = localStorage.getItem('vdownload_settings')

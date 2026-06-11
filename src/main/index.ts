@@ -7,8 +7,9 @@ import { applySessionProxy, buildProxyUrl, testAllSites, getIpInfo } from './ser
 import type { ProxyType } from '../shared/types'
 import { extractFrames, ffmpegReady } from './services/ffmpeg'
 import { transcribeVideo, cancelTranscribe, killAllTranscribes, whisperReady } from './services/whisper'
-import { testLlm, analyzeTitle } from './services/llm'
+import { testLlm, analyzeTitle, analyzeChannel, setLlmRuntimeConfig } from './services/llm'
 import { fetchTranscript, getCachedTranscript, getCachedOpeningText } from './services/transcript'
+import { setAutoAnalyzeEnabled, setAutoAnalysisNotifier, saveAnalysis } from './services/autoAnalysis'
 import {
   addSubscription,
   listSubscriptions,
@@ -25,7 +26,7 @@ import {
   startScheduler,
   stopScheduler,
 } from './services/subscription'
-import type { FrameExtractOptions, TranscribeOptions, WhisperConfig, TaskResult, TranscribeResult, CheckInterval, NewVideoItem, LlmConfig, TitleAnalysisInput } from '../shared/types'
+import type { FrameExtractOptions, TranscribeOptions, WhisperConfig, TaskResult, TranscribeResult, CheckInterval, NewVideoItem, LlmConfig, TitleAnalysisInput, ChannelAnalysisInput, TitleAnalysisResult, VideoAnalysisRecord } from '../shared/types'
 import {
   initDb,
   closeDb,
@@ -45,6 +46,8 @@ import {
   updateTopicIdea,
   deleteTopicIdea,
   type TopicIdeaRow,
+  getVideoAnalysis,
+  listVideoAnalysisKeys,
 } from './services/db'
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -253,15 +256,61 @@ app.whenReady().then(async () => {
 
   // ---- LLM（AI 分析）IPC ----
   ipcMain.handle('llm:test', async (_e, cfg: LlmConfig) => testLlm(cfg))
-  ipcMain.handle('llm:analyze-title', async (_e, cfg: LlmConfig, input: TitleAnalysisInput) => {
+  ipcMain.handle(
+    'llm:analyze-title',
+    async (_e, cfg: LlmConfig, input: TitleAnalysisInput, save?: { videoId: string; channelId: string }) => {
+      try {
+        const data = await analyzeTitle(cfg, input)
+        // 带视频标识时把拆解结果入库（角标 + 复用缓存）
+        if (save?.videoId) {
+          saveAnalysis(save.videoId, save.channelId, input.title, data, !!input.openingText, false)
+        }
+        return { status: 'success', data }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[llm] analyze title failed:', msg)
+        return { status: 'failed', errorMessage: msg }
+      }
+    },
+  )
+  ipcMain.handle('llm:analyze-channel', async (_e, cfg: LlmConfig, input: ChannelAnalysisInput) => {
     try {
-      const data = await analyzeTitle(cfg, input)
+      const data = await analyzeChannel(cfg, input)
       return { status: 'success', data }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[llm] analyze title failed:', msg)
+      console.error('[llm] analyze channel failed:', msg)
       return { status: 'failed', errorMessage: msg }
     }
+  })
+  /** 渲染端启动 / 改设置时推送 LLM 配置和自动拆解开关（爆款自动分析在主进程跑，需要配置） */
+  ipcMain.handle('llm:set-config', (_e, cfg: LlmConfig | null, autoAnalyzeHot: boolean) => {
+    setLlmRuntimeConfig(cfg)
+    setAutoAnalyzeEnabled(!!autoAnalyzeHot)
+  })
+
+  // ---- 视频拆解记录 IPC ----
+  ipcMain.handle('analysis:get', (_e, videoId: string, channelId: string): VideoAnalysisRecord | null => {
+    try {
+      const row = getVideoAnalysis(videoId, channelId)
+      if (!row) return null
+      let result: TitleAnalysisResult
+      try { result = JSON.parse(row.result_json) as TitleAnalysisResult } catch { return null }
+      return {
+        videoId: row.video_id,
+        channelId: row.channel_id,
+        title: row.title,
+        result,
+        usedOpening: row.used_opening === 1,
+        auto: row.auto === 1,
+        createdAt: row.created_at,
+      }
+    } catch { return null }
+  })
+  ipcMain.handle('analysis:keys', (): { videoId: string; channelId: string }[] => {
+    try {
+      return listVideoAnalysisKeys().map((r) => ({ videoId: r.video_id, channelId: r.channel_id }))
+    } catch { return [] }
   })
 
   // ---- 视频文案（字幕提取入库）IPC ----
@@ -492,6 +541,14 @@ app.whenReady().then(async () => {
 
   // ---- 频道订阅 ----
   setSubYtdlpPathGetter(() => getYtdlpPathPublic())
+
+  // 爆款自动拆解完成 → 推送渲染端刷新角标
+  setAutoAnalysisNotifier((info) => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win && !win.webContents.isDestroyed()) {
+      win.webContents.send('analysis:auto-done', info)
+    }
+  })
 
   ipcMain.handle('sub:list', () => {
     try { return listSubscriptions() } catch (err) {

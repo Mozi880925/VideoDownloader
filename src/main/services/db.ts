@@ -53,6 +53,16 @@ export interface NewVideoRow {
   status: string             // 'new' | 'dismissed' | 'seen'
 }
 
+export interface VideoAnalysisRow {
+  video_id: string
+  channel_id: string
+  title: string
+  result_json: string
+  used_opening: number
+  auto: number
+  created_at: number
+}
+
 export interface VideoTranscriptRow {
   video_id: string
   channel_id: string
@@ -151,6 +161,16 @@ export function initDb(): void {
       language TEXT NOT NULL DEFAULT '',
       srt TEXT NOT NULL DEFAULT '',
       text TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (video_id, channel_id)
+    );
+    CREATE TABLE IF NOT EXISTS video_analyses (
+      video_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      result_json TEXT NOT NULL DEFAULT '',
+      used_opening INTEGER NOT NULL DEFAULT 0,
+      auto INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (video_id, channel_id)
     );
@@ -329,7 +349,33 @@ export function deleteSubscription(id: string): void {
   db.prepare('DELETE FROM channel_subscriptions WHERE id = ?').run(id)
   db.prepare('DELETE FROM channel_new_videos WHERE channel_id = ?').run(id)
   db.prepare('DELETE FROM video_transcripts WHERE channel_id = ?').run(id)
+  db.prepare('DELETE FROM video_analyses WHERE channel_id = ?').run(id)
   console.log('[db] deleted subscription:', id)
+}
+
+// ---- 视频 AI 拆解记录 ----
+
+export function getVideoAnalysis(videoId: string, channelId: string): VideoAnalysisRow | undefined {
+  return ensureDb()
+    .prepare('SELECT * FROM video_analyses WHERE video_id = ? AND channel_id = ?')
+    .get(videoId, channelId) as VideoAnalysisRow | undefined
+}
+
+export function upsertVideoAnalysis(row: VideoAnalysisRow): void {
+  ensureDb().prepare(
+    `INSERT INTO video_analyses (video_id, channel_id, title, result_json, used_opening, auto, created_at)
+     VALUES (@video_id, @channel_id, @title, @result_json, @used_opening, @auto, @created_at)
+     ON CONFLICT(video_id, channel_id) DO UPDATE SET
+       title = excluded.title, result_json = excluded.result_json,
+       used_opening = excluded.used_opening, auto = excluded.auto, created_at = excluded.created_at`,
+  ).run(row)
+}
+
+/** 所有已拆解视频的键（渲染端打「已拆解」角标用） */
+export function listVideoAnalysisKeys(): { video_id: string; channel_id: string }[] {
+  return ensureDb()
+    .prepare('SELECT video_id, channel_id FROM video_analyses')
+    .all() as { video_id: string; channel_id: string }[]
 }
 
 // ---- 视频文案（字幕转录文本） ----

@@ -71,6 +71,12 @@ const App: React.FC = () => {
     window.api.subSetInterval(interval).catch(() => {})
   }, [])
 
+  // 启动时把 LLM 配置和爆款自动拆解开关推送到主进程（定时检查的自动拆解在主进程跑）
+  useEffect(() => {
+    const { llm, autoAnalyzeHot } = useDownloadStore.getState().appSettings
+    window.api.llmSetConfig(llm ?? null, !!autoAnalyzeHot).catch(() => {})
+  }, [])
+
   // 启动时同步代理设置到主进程
   useEffect(() => {
     const { proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword } = useDownloadStore.getState().appSettings

@@ -1,6 +1,27 @@
 import { net } from 'electron'
-import type { LlmConfig, TitleAnalysis, TitleAnalysisInput, TitleAnalysisResult } from '../../shared/types'
+import type {
+  ChannelAnalysis,
+  ChannelAnalysisInput,
+  ChannelAnalysisResult,
+  LlmConfig,
+  TitleAnalysis,
+  TitleAnalysisInput,
+  TitleAnalysisResult,
+} from '../../shared/types'
 import { logInfo, logError } from './logger'
+
+// ────────── 运行时配置（渲染端启动/改设置时推送，主进程自动拆解爆款时用） ──────────
+
+let runtimeConfig: LlmConfig | null = null
+
+export function setLlmRuntimeConfig(cfg: LlmConfig | null): void {
+  runtimeConfig = cfg && cfg.baseUrl?.trim() && cfg.apiKey?.trim() && cfg.model?.trim() ? cfg : null
+  logInfo(`[llm] runtime config ${runtimeConfig ? 'set, model=' + runtimeConfig.model : 'cleared'}`)
+}
+
+export function getLlmRuntimeConfig(): LlmConfig | null {
+  return runtimeConfig
+}
 
 // ────────── OpenAI 兼容 Chat Completions 调用 ──────────
 // 使用 electron net.fetch：走 Chromium 网络栈，自动复用 defaultSession 的代理设置
@@ -158,6 +179,56 @@ export async function analyzeTitle(cfg: LlmConfig, input: TitleAnalysisInput): P
     parsed.opening = typeof parsed.opening === 'string' && parsed.opening ? parsed.opening : undefined
   } else {
     logInfo('[llm] analyzeTitle: JSON parse failed, returning raw text')
+  }
+  return { raw, parsed }
+}
+
+// ────────── 频道级标题规律分析 ──────────
+
+const CHANNEL_SYSTEM_PROMPT = `你是一位短视频与 YouTube 内容策略专家，擅长从一个频道的批量数据中归纳标题方法论。
+用户是一名内容创作者，会给你一个对标频道的近期视频列表（标题 + 播放量）。
+请对比高播放和低播放视频，归纳这个频道的标题规律。
+你必须只输出一个 JSON 对象，不要输出任何其他文字，结构如下：
+{
+  "formula": "用一两句话总结这个频道效果最好的标题公式",
+  "patterns": ["高播放标题的共性规律，每条一短句，3-5 条"],
+  "weaknesses": "低播放标题的常见问题，一两句话",
+  "templates": ["从高播放标题中抽象出的可套用模板，用【】标注可替换槽位，给 3 条"],
+  "suggestions": ["按这个频道验证有效的套路，给用户 3 个具体的选题建议，每条是一个完整的候选标题"]
+}
+所有内容用中文。`
+
+function buildChannelUserPrompt(input: ChannelAnalysisInput): string {
+  const lines: string[] = [`【频道】${input.channelName}`, '', '【近期视频（标题 | 播放量 | 发布日期）】']
+  for (const v of input.videos.slice(0, 30)) {
+    lines.push(`- ${v.title} | ${v.viewCount ? v.viewCount.toLocaleString() : '未知'} | ${v.uploadDate || '未知'}`)
+  }
+  lines.push('')
+  lines.push('请归纳这个频道的标题规律。')
+  return lines.join('\n')
+}
+
+/** 频道级标题规律报告：整个频道的标题+播放量喂给 LLM，归纳公式 */
+export async function analyzeChannel(cfg: LlmConfig, input: ChannelAnalysisInput): Promise<ChannelAnalysisResult> {
+  const invalid = validateConfig(cfg)
+  if (invalid) throw new Error(invalid)
+  const videos = (input?.videos ?? []).filter((v) => v.title?.trim())
+  if (videos.length < 5) throw new Error('该频道缓存的视频太少（不足 5 条），先点「检查」拉取后再分析')
+
+  const raw = await chatCompletion(cfg, [
+    { role: 'system', content: CHANNEL_SYSTEM_PROMPT },
+    { role: 'user', content: buildChannelUserPrompt({ ...input, videos }) },
+  ])
+
+  const parsed = parseLenientJson<ChannelAnalysis>(raw)
+  if (parsed) {
+    parsed.formula = typeof parsed.formula === 'string' ? parsed.formula : ''
+    parsed.weaknesses = typeof parsed.weaknesses === 'string' ? parsed.weaknesses : ''
+    parsed.patterns = Array.isArray(parsed.patterns) ? parsed.patterns.map(String) : []
+    parsed.templates = Array.isArray(parsed.templates) ? parsed.templates.map(String) : []
+    parsed.suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions.map(String) : []
+  } else {
+    logInfo('[llm] analyzeChannel: JSON parse failed, returning raw text')
   }
   return { raw, parsed }
 }

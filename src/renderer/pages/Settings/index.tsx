@@ -90,6 +90,7 @@ const Settings: React.FC = () => {
     updateSettings(values)
     window.api.setCookiesPath(values.cookiesPath || '').catch(() => {})
     window.api.setDouyinBrowser(values.douyinCookiesBrowser || 'chrome').catch(() => {})
+    window.api.llmSetConfig(values.llm ?? null, !!values.autoAnalyzeHot).catch(() => {})
     // key 去重：文本输入逐字触发时不堆叠提示
     message.success({ content: '设置已保存', key: 'settings-saved' })
   }
@@ -306,6 +307,15 @@ const Settings: React.FC = () => {
             extra="例：deepseek-chat / gpt-4o-mini / moonshot-v1-8k"
           >
             <Input placeholder="deepseek-chat" style={{ width: 280 }} />
+          </Form.Item>
+
+          <Form.Item
+            label="爆款视频自动 AI 拆解"
+            name="autoAnalyzeHot"
+            valuePropName="checked"
+            extra="检查订阅时，发现播放量超过频道中位数 2 倍的新视频，自动提取文案并 AI 拆解（标题 + 开头钩子），结果缓存在视频上。需要先配置上方 API。"
+          >
+            <Switch checkedChildren="开启" unCheckedChildren="关闭" />
           </Form.Item>
 
           <Form.Item>

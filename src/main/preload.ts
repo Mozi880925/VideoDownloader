@@ -21,6 +21,9 @@ import type {
   LlmConfig,
   TitleAnalysisInput,
   TitleAnalysisResult,
+  ChannelAnalysisInput,
+  ChannelAnalysisResult,
+  VideoAnalysisRecord,
   VideoTranscript,
 } from '../shared/types'
 
@@ -292,10 +295,39 @@ contextBridge.exposeInMainWorld('api', {
   llmAnalyzeTitle: (
     cfg: LlmConfig,
     input: TitleAnalysisInput,
+    save?: { videoId: string; channelId: string },
   ): Promise<
     | { status: 'success'; data: TitleAnalysisResult }
     | { status: 'failed'; errorMessage: string }
-  > => ipcRenderer.invoke('llm:analyze-title', cfg, input),
+  > => ipcRenderer.invoke('llm:analyze-title', cfg, input, save),
+
+  llmAnalyzeChannel: (
+    cfg: LlmConfig,
+    input: ChannelAnalysisInput,
+  ): Promise<
+    | { status: 'success'; data: ChannelAnalysisResult }
+    | { status: 'failed'; errorMessage: string }
+  > => ipcRenderer.invoke('llm:analyze-channel', cfg, input),
+
+  llmSetConfig: (cfg: LlmConfig | null, autoAnalyzeHot: boolean): Promise<void> =>
+    ipcRenderer.invoke('llm:set-config', cfg, autoAnalyzeHot),
+
+  analysisGet: (videoId: string, channelId: string): Promise<VideoAnalysisRecord | null> =>
+    ipcRenderer.invoke('analysis:get', videoId, channelId),
+
+  analysisKeys: (): Promise<{ videoId: string; channelId: string }[]> =>
+    ipcRenderer.invoke('analysis:keys'),
+
+  onAnalysisAutoDone: (
+    callback: (info: { channelId: string; channelName: string; videoId: string; videoTitle: string }) => void,
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      info: { channelId: string; channelName: string; videoId: string; videoTitle: string },
+    ) => callback(info)
+    ipcRenderer.on('analysis:auto-done', handler)
+    return () => ipcRenderer.removeListener('analysis:auto-done', handler)
+  },
 
   // ---- 视频文案（字幕提取入库） ----
   transcriptGet: (videoId: string, channelId: string): Promise<VideoTranscript | null> =>

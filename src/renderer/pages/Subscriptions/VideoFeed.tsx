@@ -2,6 +2,7 @@ import React from 'react'
 import { Button, Empty, Segmented, Select, Space, Spin, Tag, Tooltip } from 'antd'
 import {
   AppstoreOutlined,
+  BarChartOutlined,
   CheckOutlined,
   ClockCircleOutlined,
   DownloadOutlined,
@@ -76,6 +77,7 @@ function formatRelativeTime(ts: number): string {
 interface VideoItemProps {
   v: NewVideoItem
   hot: boolean
+  analyzed: boolean      // 已有 AI 拆解缓存
   channelName?: string   // 聚合模式下显示来源频道
   onDownload: (url: string) => void
   onDismiss: (videoId: string, channelId: string) => void
@@ -83,7 +85,7 @@ interface VideoItemProps {
   onTranscript: (v: NewVideoItem) => void
 }
 
-const VideoRow: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
+const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
   const isNew = v.status === 'new'
   return (
     <div
@@ -179,8 +181,14 @@ const VideoRow: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, o
 
       {/* 操作 */}
       <Space size={2} style={{ flexShrink: 0, alignSelf: 'center' }}>
-        <Tooltip title="AI 拆解标题">
-          <Button size="small" type="text" icon={<RobotOutlined />} style={{ color: '#722ed1' }} onClick={() => onAnalyze(v)} />
+        <Tooltip title={analyzed ? '查看 AI 拆解（已有结果）' : 'AI 拆解标题'}>
+          <Button
+            size="small"
+            type="text"
+            icon={<RobotOutlined />}
+            style={{ color: '#722ed1', background: analyzed ? '#f9f0ff' : undefined }}
+            onClick={() => onAnalyze(v)}
+          />
         </Tooltip>
         <Tooltip title="提取文案（免下载）">
           <Button size="small" type="text" icon={<FileTextOutlined />} onClick={() => onTranscript(v)} />
@@ -207,7 +215,7 @@ const VideoRow: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, o
   )
 }
 
-const VideoCard: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
+const VideoCard: React.FC<VideoItemProps> = ({ v, hot, analyzed, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
   const isNew = v.status === 'new'
   return (
     <div
@@ -290,8 +298,14 @@ const VideoCard: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, 
           </div>
         </div>
         <div style={{ display: 'flex', gap: 2, marginTop: 'auto' }}>
-          <Tooltip title="AI 拆解标题">
-            <Button size="small" type="text" icon={<RobotOutlined />} style={{ color: '#722ed1' }} onClick={() => onAnalyze(v)} />
+          <Tooltip title={analyzed ? '查看 AI 拆解（已有结果）' : 'AI 拆解标题'}>
+            <Button
+              size="small"
+              type="text"
+              icon={<RobotOutlined />}
+              style={{ color: '#722ed1', background: analyzed ? '#f9f0ff' : undefined }}
+              onClick={() => onAnalyze(v)}
+            />
           </Tooltip>
           <Tooltip title="提取文案（免下载）">
             <Button size="small" type="text" icon={<FileTextOutlined />} onClick={() => onTranscript(v)} />
@@ -331,6 +345,7 @@ interface VideoFeedProps {
   viewMode: FeedViewMode
   channelNames: Record<string, string>
   isHot: (v: NewVideoItem) => boolean
+  isAnalyzed: (v: NewVideoItem) => boolean
   onFilterChange: (f: FeedFilter) => void
   onSortChange: (s: FeedSort) => void
   onViewModeChange: (m: FeedViewMode) => void
@@ -342,6 +357,7 @@ interface VideoFeedProps {
   onMarkAllRead: () => void
   onDismiss: (videoId: string, channelId: string) => void
   onViewAllVideos?: () => void                    // 仅单频道模式
+  onAnalyzeChannel?: () => void                   // 仅单频道模式：频道标题规律
   onOpenAdd: () => void
 }
 
@@ -358,6 +374,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   viewMode,
   channelNames,
   isHot,
+  isAnalyzed,
   onFilterChange,
   onSortChange,
   onViewModeChange,
@@ -369,6 +386,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   onMarkAllRead,
   onDismiss,
   onViewAllVideos,
+  onAnalyzeChannel,
   onOpenAdd,
 }) => {
   const title = mode === 'all' ? '全部视频' : channel?.name ?? ''
@@ -432,6 +450,13 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 全部已读
               </Button>
             )}
+            {mode === 'channel' && onAnalyzeChannel && (
+              <Tooltip title="AI 对比高低播放标题，归纳这个频道的标题公式">
+                <Button size="small" icon={<BarChartOutlined />} style={{ color: '#722ed1', borderColor: '#d3adf7' }} onClick={onAnalyzeChannel}>
+                  频道规律
+                </Button>
+              </Tooltip>
+            )}
             {mode === 'channel' && onViewAllVideos && (
               <Tooltip title="在线拉取频道更多历史视频">
                 <Button size="small" icon={<AppstoreOutlined />} onClick={onViewAllVideos}>更多视频</Button>
@@ -487,6 +512,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 key={`${v.channelId}-${v.id}`}
                 v={v}
                 hot={isHot(v)}
+                analyzed={isAnalyzed(v)}
                 channelName={mode === 'all' ? channelNames[v.channelId] : undefined}
                 onDownload={onDownloadVideo}
                 onDismiss={onDismiss}
@@ -502,6 +528,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 key={`${v.channelId}-${v.id}`}
                 v={v}
                 hot={isHot(v)}
+                analyzed={isAnalyzed(v)}
                 channelName={mode === 'all' ? channelNames[v.channelId] : undefined}
                 onDownload={onDownloadVideo}
                 onDismiss={onDismiss}

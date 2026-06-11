@@ -10,10 +10,12 @@ interface TitleAnalysisModalProps {
   loading: boolean
   loadingText?: string            // 当前阶段提示（提取字幕中 / 分析中）
   usedOpening: boolean            // 本次分析是否带上了开头文案
+  fromCache: { auto: boolean; createdAt: number } | null   // 结果来自历史缓存时的信息
   result: TitleAnalysisResult | null
   error: string | null
   onClose: () => void
   onRetry: () => void
+  onReanalyze: () => void         // 强制重跑（忽略缓存）
 }
 
 function genTopicId(): string {
@@ -30,10 +32,12 @@ const TitleAnalysisModal: React.FC<TitleAnalysisModalProps> = ({
   loading,
   loadingText,
   usedOpening,
+  fromCache,
   result,
   error,
   onClose,
   onRetry,
+  onReanalyze,
 }) => {
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
 
@@ -131,6 +135,15 @@ const TitleAnalysisModal: React.FC<TitleAnalysisModalProps> = ({
             </div>
           )}
 
+          {!loading && !error && result && fromCache && (
+            <div style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
+              <Tag color={fromCache.auto ? 'orange' : 'default'} style={{ fontSize: 11 }}>
+                {fromCache.auto ? '🔥 爆款自动拆解' : '历史拆解'}
+              </Tag>
+              {new Date(fromCache.createdAt).toLocaleString('zh-CN')}
+            </div>
+          )}
+
           {!loading && !error && result && (
             parsed ? (
               <div>
@@ -219,6 +232,7 @@ const TitleAnalysisModal: React.FC<TitleAnalysisModalProps> = ({
                     {savedKeys.has('full') ? '已保存完整拆解' : '保存完整拆解到选题库'}
                   </Button>
                   <Button icon={<CopyOutlined />} onClick={() => copyText(fullText)}>复制全部</Button>
+                  <Button icon={<ReloadOutlined />} onClick={onReanalyze}>重新分析</Button>
                 </div>
               </div>
             ) : (

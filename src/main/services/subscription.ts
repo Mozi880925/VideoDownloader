@@ -16,6 +16,7 @@ import {
   type ChannelSubscriptionRow,
   type NewVideoRow,
 } from './db'
+import { queueHotVideos } from './autoAnalysis'
 import { logInfo, logError } from './logger'
 
 // 兼容旧 setYtdlpPathGetter 调用：现在直接用 ytdlp.fetchVideoList，无需注入
@@ -195,7 +196,7 @@ export async function checkSubscription(id: string): Promise<NewVideoItem[]> {
   logInfo(`[subscription] checked ${row.name}: fetched=${fetched.videos.length}, new=${newOnes.length}, inserted=${inserted}`)
 
   // 返回真正新插入的视频（按 newOnes 顺序）
-  return newOnes
+  const newItems = newOnes
     .filter((v) => rowsToInsert.some((r) => r.id === v.id))
     .map<NewVideoItem>((v) => ({
       id: v.id,
@@ -205,9 +206,15 @@ export async function checkSubscription(id: string): Promise<NewVideoItem[]> {
       thumbnail: v.thumbnail,
       uploadDate: v.uploadDate,
       duration: v.duration,
+      viewCount: v.viewCount,
       discoveredAt: now,
       status: 'new',
     }))
+
+  // 爆款新视频自动 AI 拆解（开关关闭/未配置 LLM 时为 no-op，fire-and-forget 不阻塞检查）
+  queueHotVideos(id, row.name, newItems)
+
+  return newItems
 }
 
 /** 检查所有启用的订阅 */
