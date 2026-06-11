@@ -78,6 +78,7 @@ interface VideoItemProps {
   v: NewVideoItem
   hot: boolean
   analyzed: boolean      // 已有 AI 拆解缓存
+  growth?: number        // 24h 播放量日增（快照不足时无）
   channelName?: string   // 聚合模式下显示来源频道
   onDownload: (url: string) => void
   onDismiss: (videoId: string, channelId: string) => void
@@ -85,7 +86,13 @@ interface VideoItemProps {
   onTranscript: (v: NewVideoItem) => void
 }
 
-const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
+/** 日增展示：≥100 才显示，避免噪音 */
+function formatGrowth(growth?: number): string {
+  if (!growth || growth < 100) return ''
+  return `↑${formatViewCount(growth)}/天`
+}
+
+const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
   const isNew = v.status === 'new'
   return (
     <div
@@ -176,6 +183,11 @@ const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, channelName, onD
           >
             {formatVideoMeta(v) || '暂无观看数据'}
           </span>
+          {formatGrowth(growth) && (
+            <span style={{ color: '#fa541c', fontWeight: 500 }} title="近 24 小时播放量增长（基于检查快照折算）">
+              {formatGrowth(growth)}
+            </span>
+          )}
         </div>
       </div>
 
@@ -215,7 +227,7 @@ const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, channelName, onD
   )
 }
 
-const VideoCard: React.FC<VideoItemProps> = ({ v, hot, analyzed, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
+const VideoCard: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
   const isNew = v.status === 'new'
   return (
     <div
@@ -295,6 +307,11 @@ const VideoCard: React.FC<VideoItemProps> = ({ v, hot, analyzed, channelName, on
             title={formatUploadDate(v.uploadDate) ? `发布于 ${formatUploadDate(v.uploadDate)}` : undefined}
           >
             {formatVideoMeta(v) || '暂无观看数据'}
+            {formatGrowth(growth) && (
+              <span style={{ color: '#fa541c', fontWeight: 500, marginLeft: 6 }} title="近 24 小时播放量增长（基于检查快照折算）">
+                {formatGrowth(growth)}
+              </span>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 2, marginTop: 'auto' }}>
@@ -346,6 +363,7 @@ interface VideoFeedProps {
   channelNames: Record<string, string>
   isHot: (v: NewVideoItem) => boolean
   isAnalyzed: (v: NewVideoItem) => boolean
+  getGrowth: (v: NewVideoItem) => number | undefined
   onFilterChange: (f: FeedFilter) => void
   onSortChange: (s: FeedSort) => void
   onViewModeChange: (m: FeedViewMode) => void
@@ -375,6 +393,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   channelNames,
   isHot,
   isAnalyzed,
+  getGrowth,
   onFilterChange,
   onSortChange,
   onViewModeChange,
@@ -513,6 +532,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 v={v}
                 hot={isHot(v)}
                 analyzed={isAnalyzed(v)}
+                growth={getGrowth(v)}
                 channelName={mode === 'all' ? channelNames[v.channelId] : undefined}
                 onDownload={onDownloadVideo}
                 onDismiss={onDismiss}
@@ -529,6 +549,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 v={v}
                 hot={isHot(v)}
                 analyzed={isAnalyzed(v)}
+                growth={getGrowth(v)}
                 channelName={mode === 'all' ? channelNames[v.channelId] : undefined}
                 onDownload={onDownloadVideo}
                 onDismiss={onDismiss}

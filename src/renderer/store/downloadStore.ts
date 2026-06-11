@@ -177,6 +177,7 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
         model: '',
       },
       autoAnalyzeHot: false,
+      youtubeApiKey: '',
     }
     try {
       const s = localStorage.getItem('vdownload_settings')

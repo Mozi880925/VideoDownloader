@@ -53,6 +53,8 @@ const Subscriptions: React.FC = () => {
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   // 已有拆解记录的视频键（channelId|videoId），用于角标
   const [analyzedKeys, setAnalyzedKeys] = useState<Set<string>>(new Set())
+  // 播放量日增（channelId|videoId → growth24h），快照不足两次的视频没有数据
+  const [growthMap, setGrowthMap] = useState<Record<string, number>>({})
 
   // ── 频道标题规律 ──
   const [chanAnalyzeTarget, setChanAnalyzeTarget] = useState<ChannelSubscription | null>(null)
@@ -76,14 +78,16 @@ const Subscriptions: React.FC = () => {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const [list, allVids, keys] = await Promise.all([
+      const [list, allVids, keys, growth] = await Promise.all([
         window.api.subList(),
         window.api.subListNewVideos(),   // 返回所有状态（new + seen + dismissed）
         window.api.analysisKeys(),
+        window.api.subGrowthStats(),
       ])
       setSubs(list)
       setChannelVideos(allVids)
       setAnalyzedKeys(new Set(keys.map((k) => `${k.channelId}|${k.videoId}`)))
+      setGrowthMap(Object.fromEntries(growth.map((g) => [`${g.channelId}|${g.videoId}`, g.growth24h])))
     } finally {
       setLoading(false)
     }
@@ -139,10 +143,19 @@ const Subscriptions: React.FC = () => {
     return map
   }, [videosByChannel])
 
+  // 爆款双信号：绝对值（播放量 ≥ 中位数×2）或增速（日增 ≥ 中位数一半，可在爬坡期提前预警）
   const isHot = useCallback((v: NewVideoItem) => {
     const t = hotThresholds[v.channelId]
-    return !!t && (v.viewCount ?? 0) >= t
-  }, [hotThresholds])
+    if (!t) return false
+    if ((v.viewCount ?? 0) >= t) return true
+    const g = growthMap[`${v.channelId}|${v.id}`]
+    return g !== undefined && g >= Math.max(t / 4, 500)
+  }, [hotThresholds, growthMap])
+
+  const getGrowth = useCallback(
+    (v: NewVideoItem) => growthMap[`${v.channelId}|${v.id}`],
+    [growthMap],
+  )
 
   const isAnalyzed = useCallback(
     (v: NewVideoItem) => analyzedKeys.has(`${v.channelId}|${v.id}`),
@@ -539,6 +552,7 @@ const Subscriptions: React.FC = () => {
           channelNames={channelNames}
           isHot={isHot}
           isAnalyzed={isAnalyzed}
+          getGrowth={getGrowth}
           onFilterChange={setFilter}
           onSortChange={setSort}
           onViewModeChange={setViewMode}

@@ -13,6 +13,8 @@ import {
   listNewVideos as dbListNewVideos,
   dismissNewVideo as dbDismiss,
   clearNewVideos as dbClear,
+  insertViewSnapshots,
+  pruneViewSnapshots,
   type ChannelSubscriptionRow,
   type NewVideoRow,
 } from './db'
@@ -192,6 +194,18 @@ export async function checkSubscription(id: string): Promise<NewVideoItem[]> {
   // 更新 last_seen_ids（合并新旧，去重，保留最多 200 个防止无限增长）
   const mergedIds = Array.from(new Set([...fetched.videos.map((v) => v.id), ...seen])).slice(0, 200)
   updateSubscriptionCheckState(id, now, JSON.stringify(mergedIds))
+
+  // 播放量快照：每次检查记录一次，用于计算增速（提前发现正在爬坡的爆款）
+  try {
+    insertViewSnapshots(
+      fetched.videos
+        .filter((v) => (v.viewCount ?? 0) > 0)
+        .map((v) => ({ video_id: v.id, channel_id: id, view_count: v.viewCount as number })),
+    )
+    pruneViewSnapshots()
+  } catch (err) {
+    logError('[subscription] snapshot insert failed', err instanceof Error ? err : new Error(String(err)))
+  }
 
   logInfo(`[subscription] checked ${row.name}: fetched=${fetched.videos.length}, new=${newOnes.length}, inserted=${inserted}`)
 

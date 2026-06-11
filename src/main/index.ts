@@ -10,6 +10,7 @@ import { transcribeVideo, cancelTranscribe, killAllTranscribes, whisperReady } f
 import { testLlm, analyzeTitle, analyzeChannel, setLlmRuntimeConfig } from './services/llm'
 import { fetchTranscript, getCachedTranscript, getCachedOpeningText } from './services/transcript'
 import { setAutoAnalyzeEnabled, setAutoAnalysisNotifier, saveAnalysis } from './services/autoAnalysis'
+import { setYoutubeApiKey, testYoutubeApiKey } from './services/youtubeApi'
 import {
   addSubscription,
   listSubscriptions,
@@ -48,6 +49,7 @@ import {
   type TopicIdeaRow,
   getVideoAnalysis,
   listVideoAnalysisKeys,
+  computeGrowthStats,
 } from './services/db'
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -287,6 +289,21 @@ app.whenReady().then(async () => {
   ipcMain.handle('llm:set-config', (_e, cfg: LlmConfig | null, autoAnalyzeHot: boolean) => {
     setLlmRuntimeConfig(cfg)
     setAutoAnalyzeEnabled(!!autoAnalyzeHot)
+  })
+
+  // ---- YouTube Data API IPC ----
+  ipcMain.handle('ytapi:set-key', (_e, key: string | null) => setYoutubeApiKey(key))
+  ipcMain.handle('ytapi:test', async (_e, key: string) => testYoutubeApiKey(key))
+
+  // ---- 播放量增速 IPC ----
+  ipcMain.handle('sub:growth', () => {
+    try {
+      return computeGrowthStats().map((r) => ({
+        videoId: r.video_id,
+        channelId: r.channel_id,
+        growth24h: r.growth_24h,
+      }))
+    } catch { return [] }
   })
 
   // ---- 视频拆解记录 IPC ----

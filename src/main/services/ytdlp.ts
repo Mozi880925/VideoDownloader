@@ -14,6 +14,7 @@ import type {
   VideoListResult,
 } from '../../shared/types'
 import { logInfo, logError } from './logger'
+import { fetchChannelVideosViaApi } from './youtubeApi'
 
 const execFileAsync = promisify(execFile)
 
@@ -745,15 +746,80 @@ export async function updateYtdlp(): Promise<{ success: boolean; output: string 
 }
 
 /**
- * 拉取频道/播放列表的视频列表（基于 yt-dlp --flat-playlist）
- * 适用于：YouTube 频道主页、播放列表 URL 等
+ * YouTube RSS 订阅源：补全 flat-playlist 拿不到的播放量和精确发布时间。
+ * 现版 yt-dlp 在 /videos 页签 flat 模式下不返回 view_count（YouTube 改版），
+ * 而 RSS（feeds/videos.xml）自带 media:statistics views 和 published，覆盖最新 15 条。
  */
-export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise<VideoListResult> {
+async function fetchYoutubeRssStats(
+  channelId: string,
+): Promise<Map<string, { views?: number; published?: string }>> {
+  const { net } = await import('electron')
+  const stats = new Map<string, { views?: number; published?: string }>()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15_000)
+  try {
+    const resp = await net.fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`, {
+      signal: controller.signal,
+    })
+    if (!resp.ok) return stats
+    const xml = await resp.text()
+    for (const entry of xml.match(/<entry>[\s\S]*?<\/entry>/g) ?? []) {
+      const id = entry.match(/<yt:videoId>([\w-]+)<\/yt:videoId>/)?.[1]
+      if (!id) continue
+      const views = entry.match(/<media:statistics[^>]*\bviews="(\d+)"/)?.[1]
+      const published = entry.match(/<published>([^<]+)<\/published>/)?.[1]
+      stats.set(id, {
+        views: views ? Number(views) : undefined,
+        published: published || undefined,
+      })
+    }
+    logInfo(`[fetchVideoList] RSS stats merged for channel ${channelId}: ${stats.size} entries`)
+  } catch (err) {
+    logInfo(`[fetchVideoList] RSS fetch failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    clearTimeout(timer)
+  }
+  return stats
+}
+
+/** ISO 时间 → YYYYMMDD */
+function isoToUploadDate(iso: string): string | undefined {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return undefined
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * 拉取频道/播放列表的视频列表。
+ * 配置了 YouTube Data API Key 且 URL 是频道地址时走官方 API（精确播放量，全量覆盖）；
+ * 否则（无 Key / 播放列表 / 其他平台 / API 出错）回落 yt-dlp --flat-playlist。
+ */
+export async function fetchVideoList(url: string, limit = 30, proxy?: string): Promise<VideoListResult> {
+  try {
+    const viaApi = await fetchChannelVideosViaApi(url, limit)
+    if (viaApi) return viaApi
+  } catch (err) {
+    logInfo(`[fetchVideoList] YouTube API failed, falling back to yt-dlp: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  return fetchVideoListViaYtdlp(url, limit, proxy)
+}
+
+/** yt-dlp --flat-playlist 路径（YouTube 频道主页、播放列表、抖音等） */
+function fetchVideoListViaYtdlp(url: string, limit = 30, proxy?: string): Promise<VideoListResult> {
   return new Promise((resolve, reject) => {
-    const cleanUrl = url.trim()
+    let cleanUrl = url.trim()
     if (!cleanUrl) {
       reject(new Error('URL 不能为空'))
       return
+    }
+
+    // YouTube 频道根地址 → /videos 页签：根地址在 flat 模式下只返回页签播放列表（"xxx - Videos"），不是视频
+    const ytRoot = cleanUrl.match(
+      /^(https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:@[\w.-]+|channel\/[\w-]+|c\/[^/?#]+|user\/[^/?#]+))\/?(?:[?#].*)?$/i,
+    )
+    if (ytRoot) {
+      cleanUrl = ytRoot[1] + '/videos'
+      logInfo(`[fetchVideoList] channel root URL rewritten to videos tab: ${cleanUrl}`)
     }
 
     const args = [
@@ -780,7 +846,7 @@ export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise
     proc.stdout.on('data', (c) => { stdout += c.toString() })
     proc.stderr.on('data', (c) => { stderr += c.toString() })
 
-    proc.on('close', (code) => {
+    proc.on('close', async (code) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
@@ -802,6 +868,7 @@ export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise
         (typeof root.uploader === 'string' ? root.uploader : undefined) ||
         (typeof root.title === 'string' ? root.title : undefined)
 
+      const isYoutubeTab = root.extractor_key === 'YoutubeTab'
       const entries: unknown[] = Array.isArray(root.entries) ? root.entries : []
       const videos: VideoListItem[] = []
 
@@ -809,6 +876,8 @@ export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise
         try {
           const obj = entry as Record<string, unknown>
           if (!obj.id) continue
+          // YouTube 页签提取时只保留真正的视频条目，跳过嵌套的页签/播放列表（如 "xxx - Shorts"）
+          if (isYoutubeTab && obj.ie_key !== 'Youtube') continue
           const id = String(obj.id)
           const url = typeof obj.url === 'string' ? obj.url : `https://www.youtube.com/watch?v=${id}`
           const thumb = Array.isArray(obj.thumbnails) && (obj.thumbnails[0] as Record<string, unknown>)?.url
@@ -840,6 +909,21 @@ export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise
             viewCount: typeof vc === 'number' ? vc : (typeof vc === 'string' && /^\d+$/.test(vc) ? Number(vc) : undefined),
           })
         } catch { /* skip */ }
+      }
+
+      // YouTube /videos 页签 flat 模式拿不到播放量 → 用频道 RSS 补全（播放量 + 精确发布日期，最新 15 条）
+      const channelId = typeof root.channel_id === 'string' ? root.channel_id : ''
+      if (isYoutubeTab && channelId.startsWith('UC') && videos.some((v) => v.viewCount === undefined)) {
+        const stats = await fetchYoutubeRssStats(channelId)
+        for (const v of videos) {
+          const s = stats.get(v.id)
+          if (!s) continue
+          if (v.viewCount === undefined && s.views !== undefined) v.viewCount = s.views
+          if (s.published) {
+            const exact = isoToUploadDate(s.published)
+            if (exact) v.uploadDate = exact   // RSS 的发布时间比 approximate_date 推算的更准
+          }
+        }
       }
 
       resolve({ channelName, videos })

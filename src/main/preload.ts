@@ -25,6 +25,7 @@ import type {
   ChannelAnalysisResult,
   VideoAnalysisRecord,
   VideoTranscript,
+  VideoGrowthStat,
 } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -287,6 +288,15 @@ contextBridge.exposeInMainWorld('api', {
     srtPaths?: string[]
     errorMessage?: string
   }> => ipcRenderer.invoke('extract-subtitles', url, outputDir, langs),
+
+  // ---- YouTube Data API ----
+  ytApiSetKey: (key: string | null): Promise<void> => ipcRenderer.invoke('ytapi:set-key', key),
+
+  ytApiTest: (key: string): Promise<{ ok: boolean; message: string }> =>
+    ipcRenderer.invoke('ytapi:test', key),
+
+  /** 播放量增速（24h 日增，基于快照） */
+  subGrowthStats: (): Promise<VideoGrowthStat[]> => ipcRenderer.invoke('sub:growth'),
 
   // ---- LLM（AI 分析） ----
   llmTest: (cfg: LlmConfig): Promise<{ ok: boolean; message: string }> =>

@@ -194,6 +194,11 @@ declare global {
       | { status: 'failed'; errorMessage: string }
     >
 
+    // YouTube Data API
+    ytApiSetKey: (key: string | null) => Promise<void>
+    ytApiTest: (key: string) => Promise<{ ok: boolean; message: string }>
+    subGrowthStats: () => Promise<VideoGrowthStat[]>
+
     // LLM（AI 分析）
     llmTest: (cfg: LlmConfig) => Promise<{ ok: boolean; message: string }>
     llmAnalyzeTitle: (
@@ -285,6 +290,12 @@ declare global {
     usedOpening: boolean
     auto: boolean
     createdAt: number
+  }
+
+  interface VideoGrowthStat {
+    videoId: string
+    channelId: string
+    growth24h: number
   }
 
   interface TitleAnalysisResult {

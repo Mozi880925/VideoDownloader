@@ -174,6 +174,13 @@ export function initDb(): void {
       created_at INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (video_id, channel_id)
     );
+    CREATE TABLE IF NOT EXISTS view_snapshots (
+      video_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      view_count INTEGER NOT NULL DEFAULT 0,
+      captured_at INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapshots_video ON view_snapshots(channel_id, video_id, captured_at);
   `)
 
   // Migration: 为已存在的旧表补充 tags 列
@@ -207,6 +214,17 @@ export function initDb(): void {
     console.log('[db] migration: added `view_count` column to channel_new_videos')
   }
 
+  // Cleanup: 订阅频道根 URL 时曾把页签播放列表（"xxx - Videos/Shorts"）误存为视频，清掉这类假条目
+  const tabCleanup = db
+    .prepare(`DELETE FROM channel_new_videos
+              WHERE url LIKE '%youtube.com/%/videos'
+                 OR url LIKE '%youtube.com/%/shorts'
+                 OR url LIKE '%youtube.com/%/streams'
+                 OR url LIKE '%youtube.com/%/playlists'`)
+    .run()
+  if (tabCleanup.changes > 0) {
+    console.log(`[db] cleanup: removed ${tabCleanup.changes} channel-tab pseudo-video rows`)
+  }
 
   console.log('[db] database initialized')
 }
@@ -350,6 +368,7 @@ export function deleteSubscription(id: string): void {
   db.prepare('DELETE FROM channel_new_videos WHERE channel_id = ?').run(id)
   db.prepare('DELETE FROM video_transcripts WHERE channel_id = ?').run(id)
   db.prepare('DELETE FROM video_analyses WHERE channel_id = ?').run(id)
+  db.prepare('DELETE FROM view_snapshots WHERE channel_id = ?').run(id)
   console.log('[db] deleted subscription:', id)
 }
 
@@ -376,6 +395,67 @@ export function listVideoAnalysisKeys(): { video_id: string; channel_id: string 
   return ensureDb()
     .prepare('SELECT video_id, channel_id FROM video_analyses')
     .all() as { video_id: string; channel_id: string }[]
+}
+
+// ---- 播放量快照（增速爆款探测用） ----
+
+export function insertViewSnapshots(
+  rows: { video_id: string; channel_id: string; view_count: number }[],
+): void {
+  if (rows.length === 0) return
+  const db = ensureDb()
+  const now = Date.now()
+  // 同一视频 30 分钟内只留一个快照，避免连续手动检查刷出冗余数据
+  const recent = db.prepare(
+    `SELECT 1 FROM view_snapshots WHERE channel_id = ? AND video_id = ? AND captured_at > ? LIMIT 1`,
+  )
+  const ins = db.prepare(
+    `INSERT INTO view_snapshots (video_id, channel_id, view_count, captured_at) VALUES (?, ?, ?, ?)`,
+  )
+  const tx = db.transaction(() => {
+    for (const r of rows) {
+      if (r.view_count <= 0) continue
+      if (recent.get(r.channel_id, r.video_id, now - 30 * 60_000)) continue
+      ins.run(r.video_id, r.channel_id, r.view_count, now)
+    }
+  })
+  tx()
+}
+
+/** 清理 30 天前的快照 */
+export function pruneViewSnapshots(): void {
+  ensureDb().prepare('DELETE FROM view_snapshots WHERE captured_at < ?').run(Date.now() - 30 * 86_400_000)
+}
+
+/**
+ * 计算每个视频的 24 小时播放量增速：取最近 48h 内最早与最新两个快照的差值折算成日增。
+ * 只有一个快照（刚开始监控）时无法计算，不返回该视频。
+ */
+export function computeGrowthStats(): { video_id: string; channel_id: string; growth_24h: number }[] {
+  const since = Date.now() - 48 * 3_600_000
+  const rows = ensureDb()
+    .prepare(
+      `SELECT video_id, channel_id,
+              MIN(captured_at) AS t0, MAX(captured_at) AS t1
+       FROM view_snapshots WHERE captured_at >= ?
+       GROUP BY channel_id, video_id
+       HAVING t1 > t0`,
+    )
+    .all(since) as { video_id: string; channel_id: string; t0: number; t1: number }[]
+
+  const pick = ensureDb().prepare(
+    `SELECT view_count FROM view_snapshots
+     WHERE channel_id = ? AND video_id = ? AND captured_at = ?`,
+  )
+  const result: { video_id: string; channel_id: string; growth_24h: number }[] = []
+  for (const r of rows) {
+    const v0 = (pick.get(r.channel_id, r.video_id, r.t0) as { view_count: number } | undefined)?.view_count
+    const v1 = (pick.get(r.channel_id, r.video_id, r.t1) as { view_count: number } | undefined)?.view_count
+    if (v0 === undefined || v1 === undefined || v1 <= v0) continue
+    const growth = ((v1 - v0) / (r.t1 - r.t0)) * 86_400_000
+    result.push({ video_id: r.video_id, channel_id: r.channel_id, growth_24h: Math.round(growth) })
+  }
+  return result
 }
 
 // ---- 视频文案（字幕转录文本） ----

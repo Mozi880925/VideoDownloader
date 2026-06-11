@@ -30,6 +30,8 @@ const Settings: React.FC = () => {
   const [updateResult, setUpdateResult] = useState<'updated' | 'latest' | null>(null)
   const [llmTesting, setLlmTesting] = useState(false)
   const [llmTestResult, setLlmTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [ytApiTesting, setYtApiTesting] = useState(false)
+  const [ytApiTestResult, setYtApiTestResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   useEffect(() => {
     form.setFieldsValue(appSettings)
@@ -91,6 +93,7 @@ const Settings: React.FC = () => {
     window.api.setCookiesPath(values.cookiesPath || '').catch(() => {})
     window.api.setDouyinBrowser(values.douyinCookiesBrowser || 'chrome').catch(() => {})
     window.api.llmSetConfig(values.llm ?? null, !!values.autoAnalyzeHot).catch(() => {})
+    window.api.ytApiSetKey(values.youtubeApiKey?.trim() || null).catch(() => {})
     // key 去重：文本输入逐字触发时不堆叠提示
     message.success({ content: '设置已保存', key: 'settings-saved' })
   }
@@ -120,6 +123,20 @@ const Settings: React.FC = () => {
 
   const handleOpenLogs = async () => {
     await window.api.openLogsFolder()
+  }
+
+  const handleTestYtApi = async () => {
+    const key = (form.getFieldValue('youtubeApiKey') as string | undefined)?.trim()
+    if (!key) { message.warning('请先填写 API Key'); return }
+    setYtApiTesting(true)
+    setYtApiTestResult(null)
+    try {
+      const r = await window.api.ytApiTest(key)
+      setYtApiTestResult(r)
+      if (r.ok) message.success('连接成功')
+    } finally {
+      setYtApiTesting(false)
+    }
   }
 
   const handleTestLlm = async () => {
@@ -280,6 +297,39 @@ const Settings: React.FC = () => {
             extra="写入到 mp4/mkv 的字幕轨道，播放器可切换。与独立 .srt 不冲突。"
           >
             <Switch checkedChildren="开启" unCheckedChildren="关闭" />
+          </Form.Item>
+
+          <div style={{ borderTop: '1px dashed #eee', margin: '8px 0 16px' }} />
+
+          <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>
+            <ApiOutlined style={{ marginRight: 6, color: '#ff0000' }} />
+            YouTube 数据 API
+          </div>
+
+          <Form.Item
+            label="API Key"
+            name="youtubeApiKey"
+            extra={
+              <span>
+                配置后订阅检查改走官方 Data API：全部视频精确播放量（不再受 RSS 最新 15 条限制）、点赞数、精确发布时间。
+                每日免费配额 10,000 单位，单频道检查一次约消耗 3 单位。
+                获取步骤：console.cloud.google.com → 新建项目 → 「API 和服务」启用 YouTube Data API v3 → 「凭据」创建 API 密钥。
+                留空则使用 yt-dlp + RSS 方案。
+              </span>
+            }
+          >
+            <Input.Password placeholder="AIza..." autoComplete="off" />
+          </Form.Item>
+
+          <Form.Item>
+            <Button icon={<ApiOutlined />} loading={ytApiTesting} onClick={handleTestYtApi}>
+              测试连接
+            </Button>
+            {ytApiTestResult && (
+              <span style={{ marginLeft: 12, fontSize: 12, color: ytApiTestResult.ok ? '#52c41a' : '#ff4d4f' }}>
+                {ytApiTestResult.message}
+              </span>
+            )}
           </Form.Item>
 
           <div style={{ borderTop: '1px dashed #eee', margin: '8px 0 16px' }} />

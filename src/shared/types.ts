@@ -58,11 +58,6 @@ export interface TitleAnalysis {
   opening?: string        // 开头钩子拆解（仅当提供了开头文案）
 }
 
-export interface TitleAnalysisResult {
-  raw: string             // LLM 原始回复（解析失败时兜底展示）
-  parsed?: TitleAnalysis
-}
-
 /** 频道级标题规律分析的输入 */
 export interface ChannelAnalysisInput {
   channelName: string
@@ -103,6 +98,11 @@ export interface VideoTranscript {
   language: string
   text: string
   createdAt: number
+}
+
+export interface TitleAnalysisResult {
+  raw: string             // LLM 原始回复（解析失败时兜底展示）
+  parsed?: TitleAnalysis
 }
 
 export type ProxyType = 'none' | 'system' | 'http' | 'socks5'
@@ -147,6 +147,14 @@ export interface AppSettings {
   douyinCookiesBrowser?: string    // 抖音专用浏览器 Cookie 来源，默认 'chrome'
   llm?: LlmConfig                  // AI 分析用的 OpenAI 兼容 API 配置
   autoAnalyzeHot?: boolean         // 检查订阅时自动 AI 拆解爆款新视频，默认 false
+  youtubeApiKey?: string           // YouTube Data API v3 Key，配置后订阅检查改走官方 API（精确播放量）
+}
+
+/** 视频播放量增速（基于快照计算的日增） */
+export interface VideoGrowthStat {
+  videoId: string
+  channelId: string
+  growth24h: number    // 按最近快照折算的 24 小时播放量增长
 }
 
 // yt-dlp 相关类型

@@ -77,6 +77,12 @@ const App: React.FC = () => {
     window.api.llmSetConfig(llm ?? null, !!autoAnalyzeHot).catch(() => {})
   }, [])
 
+  // 启动时把 YouTube Data API Key 推送到主进程（订阅检查走官方 API 拿精确播放量）
+  useEffect(() => {
+    const { youtubeApiKey } = useDownloadStore.getState().appSettings
+    window.api.ytApiSetKey(youtubeApiKey?.trim() || null).catch(() => {})
+  }, [])
+
   // 启动时同步代理设置到主进程
   useEffect(() => {
     const { proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword } = useDownloadStore.getState().appSettings
