@@ -8,6 +8,8 @@ interface TitleAnalysisModalProps {
   video: NewVideoItem | null      // null = 关闭
   channelName?: string
   loading: boolean
+  loadingText?: string            // 当前阶段提示（提取字幕中 / 分析中）
+  usedOpening: boolean            // 本次分析是否带上了开头文案
   result: TitleAnalysisResult | null
   error: string | null
   onClose: () => void
@@ -26,6 +28,8 @@ const TitleAnalysisModal: React.FC<TitleAnalysisModalProps> = ({
   video,
   channelName,
   loading,
+  loadingText,
+  usedOpening,
   result,
   error,
   onClose,
@@ -71,6 +75,7 @@ const TitleAnalysisModal: React.FC<TitleAnalysisModalProps> = ({
         `标题结构：${parsed.structure}`,
         parsed.hooks.length ? `钩子技巧：\n${parsed.hooks.map((h) => `- ${h}`).join('\n')}` : '',
         `情绪触发：${parsed.emotion}`,
+        parsed.opening ? `开头钩子拆解：${parsed.opening}` : '',
         parsed.templates.length ? `可复用模板：\n${parsed.templates.map((t) => `- ${t}`).join('\n')}` : '',
       ].filter(Boolean).join('\n\n')
     : result?.raw ?? ''
@@ -113,7 +118,9 @@ const TitleAnalysisModal: React.FC<TitleAnalysisModalProps> = ({
           {loading && (
             <div style={{ textAlign: 'center', padding: '48px 0' }}>
               <Spin />
-              <div style={{ color: '#888', fontSize: 13, marginTop: 12 }}>正在拆解标题套路，约需 10~30 秒…</div>
+              <div style={{ color: '#888', fontSize: 13, marginTop: 12 }}>
+                {loadingText || '正在拆解标题套路，约需 10~30 秒…'}
+              </div>
             </div>
           )}
 
@@ -143,6 +150,19 @@ const TitleAnalysisModal: React.FC<TitleAnalysisModalProps> = ({
 
                 <SectionTitle>情绪触发</SectionTitle>
                 <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>{parsed.emotion}</div>
+
+                {parsed.opening ? (
+                  <>
+                    <SectionTitle>开头钩子拆解（前 90 秒文案）</SectionTitle>
+                    <div style={{ fontSize: 13, color: '#444', lineHeight: 1.7, background: '#f6ffed', border: '1px solid #d9f7be', borderRadius: 6, padding: '8px 12px' }}>
+                      {parsed.opening}
+                    </div>
+                  </>
+                ) : !usedOpening && (
+                  <div style={{ fontSize: 12, color: '#aaa', marginTop: 10 }}>
+                    未获取到该视频的字幕文案，本次未分析开头钩子（可先点视频上的「提取文案」再重新拆解）
+                  </div>
+                )}
 
                 {parsed.templates.length > 0 && (
                   <>

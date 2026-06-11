@@ -96,7 +96,12 @@ export async function testLlm(cfg: LlmConfig): Promise<{ ok: boolean; message: s
   }
 }
 
-const TITLE_SYSTEM_PROMPT = `你是一位短视频与 YouTube 内容策略专家，擅长拆解爆款视频的标题结构和受众心理。
+function buildTitleSystemPrompt(hasOpening: boolean): string {
+  const openingField = hasOpening
+    ? `,
+  "opening": "拆解视频开头（前 90 秒文案）的钩子设计：它如何留住观众？用了什么结构（悬念/冲突/承诺/反差等）？哪几句是关键句？"`
+    : ''
+  return `你是一位短视频与 YouTube 内容策略专家，擅长拆解爆款视频的标题结构和受众心理。
 用户是一名内容创作者，正在研究同领域对标账号的视频，希望从中提炼可复用的方法论。
 你必须只输出一个 JSON 对象，不要输出任何其他文字，结构如下：
 {
@@ -104,9 +109,10 @@ const TITLE_SYSTEM_PROMPT = `你是一位短视频与 YouTube 内容策略专家
   "hooks": ["该标题使用的钩子或技巧，每条一短句"],
   "emotion": "该标题触发的核心情绪（如好奇、焦虑、惊讶、获得感）及原因",
   "templates": ["把该标题抽象成可直接套用的标题模板，用【】标注可替换槽位，给 2-3 条"],
-  "suggestions": ["结合该标题的套路，给用户 2-3 个具体的同领域选题建议，每条是一个完整的候选标题"]
+  "suggestions": ["结合该标题的套路，给用户 2-3 个具体的同领域选题建议，每条是一个完整的候选标题"]${openingField}
 }
 所有内容用中文。`
+}
 
 function buildTitleUserPrompt(input: TitleAnalysisInput): string {
   const lines: string[] = []
@@ -120,8 +126,13 @@ function buildTitleUserPrompt(input: TitleAnalysisInput): string {
       lines.push(`- ${s.title} | ${s.viewCount ? s.viewCount.toLocaleString() : '未知'}`)
     }
   }
+  if (input.openingText) {
+    lines.push('')
+    lines.push('【视频开头文案（前 90 秒字幕）】')
+    lines.push(input.openingText.slice(0, 2000))
+  }
   lines.push('')
-  lines.push('请拆解目标视频的标题。')
+  lines.push(input.openingText ? '请拆解目标视频的标题和开头钩子。' : '请拆解目标视频的标题。')
   return lines.join('\n')
 }
 
@@ -132,7 +143,7 @@ export async function analyzeTitle(cfg: LlmConfig, input: TitleAnalysisInput): P
   if (!input?.title?.trim()) throw new Error('视频标题为空')
 
   const raw = await chatCompletion(cfg, [
-    { role: 'system', content: TITLE_SYSTEM_PROMPT },
+    { role: 'system', content: buildTitleSystemPrompt(!!input.openingText) },
     { role: 'user', content: buildTitleUserPrompt(input) },
   ])
 
@@ -144,6 +155,7 @@ export async function analyzeTitle(cfg: LlmConfig, input: TitleAnalysisInput): P
     parsed.hooks = Array.isArray(parsed.hooks) ? parsed.hooks.map(String) : []
     parsed.templates = Array.isArray(parsed.templates) ? parsed.templates.map(String) : []
     parsed.suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions.map(String) : []
+    parsed.opening = typeof parsed.opening === 'string' && parsed.opening ? parsed.opening : undefined
   } else {
     logInfo('[llm] analyzeTitle: JSON parse failed, returning raw text')
   }

@@ -45,6 +45,7 @@ export interface TitleAnalysisInput {
   viewCount?: number
   channelName?: string
   siblings: { title: string; viewCount?: number }[]
+  openingText?: string    // 视频开头文案（前 90 秒字幕），提供时额外做钩子拆解
 }
 
 /** LLM 输出的结构化拆解结果 */
@@ -54,11 +55,23 @@ export interface TitleAnalysis {
   emotion: string         // 情绪触发点
   templates: string[]     // 可复用的标题模板
   suggestions: string[]   // 给用户的选题建议
+  opening?: string        // 开头钩子拆解（仅当提供了开头文案）
 }
 
 export interface TitleAnalysisResult {
   raw: string             // LLM 原始回复（解析失败时兜底展示）
   parsed?: TitleAnalysis
+}
+
+/** 视频文案（从字幕提取的纯文本） */
+export interface VideoTranscript {
+  videoId: string
+  channelId: string
+  url: string
+  title: string
+  language: string
+  text: string
+  createdAt: number
 }
 
 export type ProxyType = 'none' | 'system' | 'http' | 'socks5'

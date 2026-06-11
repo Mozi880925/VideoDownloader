@@ -183,6 +183,17 @@ declare global {
       errorMessage?: string
     }>
 
+    // 视频文案（字幕提取入库）
+    transcriptGet: (videoId: string, channelId: string) => Promise<VideoTranscript | null>
+    transcriptOpening: (videoId: string, channelId: string, seconds?: number) => Promise<string | null>
+    transcriptFetch: (
+      video: { id: string; channelId: string; url: string; title: string },
+      force?: boolean,
+    ) => Promise<
+      | { status: 'success'; data: VideoTranscript }
+      | { status: 'failed'; errorMessage: string }
+    >
+
     // LLM（AI 分析）
     llmTest: (cfg: LlmConfig) => Promise<{ ok: boolean; message: string }>
     llmAnalyzeTitle: (
@@ -212,6 +223,7 @@ declare global {
     viewCount?: number
     channelName?: string
     siblings: { title: string; viewCount?: number }[]
+    openingText?: string
   }
 
   interface TitleAnalysis {
@@ -220,6 +232,17 @@ declare global {
     emotion: string
     templates: string[]
     suggestions: string[]
+    opening?: string
+  }
+
+  interface VideoTranscript {
+    videoId: string
+    channelId: string
+    url: string
+    title: string
+    language: string
+    text: string
+    createdAt: number
   }
 
   interface TitleAnalysisResult {

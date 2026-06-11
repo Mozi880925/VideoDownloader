@@ -53,6 +53,17 @@ export interface NewVideoRow {
   status: string             // 'new' | 'dismissed' | 'seen'
 }
 
+export interface VideoTranscriptRow {
+  video_id: string
+  channel_id: string
+  url: string
+  title: string
+  language: string
+  srt: string
+  text: string
+  created_at: number
+}
+
 // ---- 数据库初始化 ----
 
 let db: Database.Database | null = null
@@ -131,6 +142,17 @@ export function initDb(): void {
       status TEXT NOT NULL DEFAULT 'pending',
       created_at INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS video_transcripts (
+      video_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL DEFAULT '',
+      url TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      language TEXT NOT NULL DEFAULT '',
+      srt TEXT NOT NULL DEFAULT '',
+      text TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (video_id, channel_id)
     );
   `)
 
@@ -306,7 +328,26 @@ export function deleteSubscription(id: string): void {
   const db = ensureDb()
   db.prepare('DELETE FROM channel_subscriptions WHERE id = ?').run(id)
   db.prepare('DELETE FROM channel_new_videos WHERE channel_id = ?').run(id)
+  db.prepare('DELETE FROM video_transcripts WHERE channel_id = ?').run(id)
   console.log('[db] deleted subscription:', id)
+}
+
+// ---- 视频文案（字幕转录文本） ----
+
+export function getVideoTranscript(videoId: string, channelId: string): VideoTranscriptRow | undefined {
+  return ensureDb()
+    .prepare('SELECT * FROM video_transcripts WHERE video_id = ? AND channel_id = ?')
+    .get(videoId, channelId) as VideoTranscriptRow | undefined
+}
+
+export function upsertVideoTranscript(row: VideoTranscriptRow): void {
+  ensureDb().prepare(
+    `INSERT INTO video_transcripts (video_id, channel_id, url, title, language, srt, text, created_at)
+     VALUES (@video_id, @channel_id, @url, @title, @language, @srt, @text, @created_at)
+     ON CONFLICT(video_id, channel_id) DO UPDATE SET
+       url = excluded.url, title = excluded.title, language = excluded.language,
+       srt = excluded.srt, text = excluded.text, created_at = excluded.created_at`,
+  ).run(row)
 }
 
 /**

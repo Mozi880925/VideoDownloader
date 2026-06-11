@@ -21,6 +21,7 @@ import type {
   LlmConfig,
   TitleAnalysisInput,
   TitleAnalysisResult,
+  VideoTranscript,
 } from '../shared/types'
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -295,6 +296,21 @@ contextBridge.exposeInMainWorld('api', {
     | { status: 'success'; data: TitleAnalysisResult }
     | { status: 'failed'; errorMessage: string }
   > => ipcRenderer.invoke('llm:analyze-title', cfg, input),
+
+  // ---- 视频文案（字幕提取入库） ----
+  transcriptGet: (videoId: string, channelId: string): Promise<VideoTranscript | null> =>
+    ipcRenderer.invoke('transcript:get', videoId, channelId),
+
+  transcriptOpening: (videoId: string, channelId: string, seconds?: number): Promise<string | null> =>
+    ipcRenderer.invoke('transcript:opening', videoId, channelId, seconds),
+
+  transcriptFetch: (
+    video: { id: string; channelId: string; url: string; title: string },
+    force?: boolean,
+  ): Promise<
+    | { status: 'success'; data: VideoTranscript }
+    | { status: 'failed'; errorMessage: string }
+  > => ipcRenderer.invoke('transcript:fetch', video, force),
 
   // ---- 选题灵感库 ----
   topicList: (): Promise<unknown[]> => ipcRenderer.invoke('topic:list'),

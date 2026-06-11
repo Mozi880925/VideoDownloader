@@ -7,6 +7,7 @@ import type { CheckInterval } from '../../../shared/types'
 import ChannelList from './ChannelList'
 import VideoFeed, { type FeedFilter, type FeedSort, type FeedViewMode } from './VideoFeed'
 import TitleAnalysisModal from './TitleAnalysisModal'
+import TranscriptModal from './TranscriptModal'
 
 // ────────── 频道订阅（双栏布局：左侧频道列表 + 右侧视频流） ──────────
 
@@ -44,8 +45,16 @@ const Subscriptions: React.FC = () => {
   // ── AI 标题拆解 ──
   const [analyzeTarget, setAnalyzeTarget] = useState<NewVideoItem | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [analysisStage, setAnalysisStage] = useState('')
+  const [analysisUsedOpening, setAnalysisUsedOpening] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<TitleAnalysisResult | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+
+  // ── 视频文案 ──
+  const [transcriptTarget, setTranscriptTarget] = useState<NewVideoItem | null>(null)
+  const [transcriptLoading, setTranscriptLoading] = useState(false)
+  const [transcriptData, setTranscriptData] = useState<VideoTranscript | null>(null)
+  const [transcriptError, setTranscriptError] = useState<string | null>(null)
 
   const llmConfig = useDownloadStore((s) => s.appSettings.llm)
   const interval = useDownloadStore((s) => s.appSettings.subscriptionCheckInterval || '6h')
@@ -307,16 +316,35 @@ const Subscriptions: React.FC = () => {
     setAnalyzing(true)
     setAnalysisResult(null)
     setAnalysisError(null)
+    setAnalysisUsedOpening(false)
     try {
-      // 同频道近期视频做对照（排除目标视频自身）
+      // 1) 拿开头文案（前 90 秒）：缓存命中直接用，否则现场免下载提一次字幕；失败不阻塞标题分析
+      let openingText: string | undefined
+      setAnalysisStage('正在获取字幕文案（不下载视频）…')
+      try {
+        let opening = await window.api.transcriptOpening(v.id, v.channelId)
+        if (!opening) {
+          const tr = await window.api.transcriptFetch({ id: v.id, channelId: v.channelId, url: v.url, title: v.title })
+          if (tr.status === 'success') {
+            opening = await window.api.transcriptOpening(v.id, v.channelId)
+          }
+        }
+        openingText = opening || undefined
+      } catch { /* 没有字幕时退化为纯标题分析 */ }
+      setAnalysisUsedOpening(!!openingText)
+
+      // 2) 同频道近期视频做对照（排除目标视频自身）
       const siblings = (videosByChannel[v.channelId] ?? [])
         .filter((s) => s.id !== v.id)
         .map((s) => ({ title: s.title, viewCount: s.viewCount }))
+
+      setAnalysisStage(openingText ? 'AI 正在拆解标题和开头钩子…' : 'AI 正在拆解标题（未找到字幕，跳过开头分析）…')
       const r = await window.api.llmAnalyzeTitle(llmConfig, {
         title: v.title,
         viewCount: v.viewCount,
         channelName: channelNames[v.channelId],
         siblings,
+        openingText,
       })
       if (r.status === 'success') setAnalysisResult(r.data)
       else setAnalysisError(r.errorMessage || '分析失败')
@@ -324,8 +352,29 @@ const Subscriptions: React.FC = () => {
       setAnalysisError(err instanceof Error ? err.message : String(err))
     } finally {
       setAnalyzing(false)
+      setAnalysisStage('')
     }
   }, [llmConfig, videosByChannel, channelNames])
+
+  const runTranscript = useCallback(async (v: NewVideoItem, force = false) => {
+    setTranscriptTarget(v)
+    setTranscriptLoading(true)
+    setTranscriptData(null)
+    setTranscriptError(null)
+    try {
+      if (!force) {
+        const cached = await window.api.transcriptGet(v.id, v.channelId)
+        if (cached) { setTranscriptData(cached); return }
+      }
+      const r = await window.api.transcriptFetch({ id: v.id, channelId: v.channelId, url: v.url, title: v.title }, force)
+      if (r.status === 'success') setTranscriptData(r.data)
+      else setTranscriptError(r.errorMessage || '提取失败')
+    } catch (err) {
+      setTranscriptError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setTranscriptLoading(false)
+    }
+  }, [])
 
   const handleDownloadAllNew = () => {
     const urls = scopeVideos.filter((v) => v.status === 'new').map((v) => v.url)
@@ -411,6 +460,7 @@ const Subscriptions: React.FC = () => {
           onViewModeChange={setViewMode}
           onCheck={() => (feedMode === 'all' ? handleCheckAll() : handleCheckOne(selectedChannelId))}
           onAnalyzeVideo={runAnalysis}
+          onTranscriptVideo={runTranscript}
           onDownloadVideo={handleDownloadVideo}
           onDownloadAllNew={handleDownloadAllNew}
           onMarkAllRead={handleMarkAllRead}
@@ -483,10 +533,22 @@ const Subscriptions: React.FC = () => {
         video={analyzeTarget}
         channelName={analyzeTarget ? channelNames[analyzeTarget.channelId] : undefined}
         loading={analyzing}
+        loadingText={analysisStage}
+        usedOpening={analysisUsedOpening}
         result={analysisResult}
         error={analysisError}
         onClose={() => setAnalyzeTarget(null)}
         onRetry={() => analyzeTarget && runAnalysis(analyzeTarget)}
+      />
+
+      {/* 视频文案 Modal */}
+      <TranscriptModal
+        video={transcriptTarget}
+        loading={transcriptLoading}
+        transcript={transcriptData}
+        error={transcriptError}
+        onClose={() => setTranscriptTarget(null)}
+        onRetry={() => transcriptTarget && runTranscript(transcriptTarget, true)}
       />
 
       {/* 浏览频道全部视频 Modal */}

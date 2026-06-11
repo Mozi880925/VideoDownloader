@@ -8,6 +8,7 @@ import type { ProxyType } from '../shared/types'
 import { extractFrames, ffmpegReady } from './services/ffmpeg'
 import { transcribeVideo, cancelTranscribe, killAllTranscribes, whisperReady } from './services/whisper'
 import { testLlm, analyzeTitle } from './services/llm'
+import { fetchTranscript, getCachedTranscript, getCachedOpeningText } from './services/transcript'
 import {
   addSubscription,
   listSubscriptions,
@@ -262,6 +263,26 @@ app.whenReady().then(async () => {
       return { status: 'failed', errorMessage: msg }
     }
   })
+
+  // ---- 视频文案（字幕提取入库）IPC ----
+  ipcMain.handle('transcript:get', (_e, videoId: string, channelId: string) => {
+    try { return getCachedTranscript(videoId, channelId) } catch { return null }
+  })
+  ipcMain.handle('transcript:opening', (_e, videoId: string, channelId: string, seconds?: number) => {
+    try { return getCachedOpeningText(videoId, channelId, seconds) } catch { return null }
+  })
+  ipcMain.handle(
+    'transcript:fetch',
+    async (_e, video: { id: string; channelId: string; url: string; title: string }, force?: boolean) => {
+      try {
+        const data = await fetchTranscript(video, force)
+        return { status: 'success', data }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { status: 'failed', errorMessage: msg }
+      }
+    },
+  )
 
   // ---- 选题灵感库 IPC ----
   ipcMain.handle('topic:list', () => listTopicIdeas())

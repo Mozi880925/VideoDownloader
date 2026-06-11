@@ -6,6 +6,7 @@ import {
   ClockCircleOutlined,
   DownloadOutlined,
   EyeOutlined,
+  FileTextOutlined,
   FireOutlined,
   LinkOutlined,
   ReloadOutlined,
@@ -79,9 +80,10 @@ interface VideoItemProps {
   onDownload: (url: string) => void
   onDismiss: (videoId: string, channelId: string) => void
   onAnalyze: (v: NewVideoItem) => void
+  onTranscript: (v: NewVideoItem) => void
 }
 
-const VideoRow: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, onDismiss, onAnalyze }) => {
+const VideoRow: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
   const isNew = v.status === 'new'
   return (
     <div
@@ -180,6 +182,9 @@ const VideoRow: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, o
         <Tooltip title="AI 拆解标题">
           <Button size="small" type="text" icon={<RobotOutlined />} style={{ color: '#722ed1' }} onClick={() => onAnalyze(v)} />
         </Tooltip>
+        <Tooltip title="提取文案（免下载）">
+          <Button size="small" type="text" icon={<FileTextOutlined />} onClick={() => onTranscript(v)} />
+        </Tooltip>
         <Tooltip title="加入批量下载">
           <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => onDownload(v.url)} />
         </Tooltip>
@@ -202,7 +207,7 @@ const VideoRow: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, o
   )
 }
 
-const VideoCard: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, onDismiss, onAnalyze }) => {
+const VideoCard: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
   const isNew = v.status === 'new'
   return (
     <div
@@ -288,6 +293,9 @@ const VideoCard: React.FC<VideoItemProps> = ({ v, hot, channelName, onDownload, 
           <Tooltip title="AI 拆解标题">
             <Button size="small" type="text" icon={<RobotOutlined />} style={{ color: '#722ed1' }} onClick={() => onAnalyze(v)} />
           </Tooltip>
+          <Tooltip title="提取文案（免下载）">
+            <Button size="small" type="text" icon={<FileTextOutlined />} onClick={() => onTranscript(v)} />
+          </Tooltip>
           <Tooltip title="加入批量下载">
             <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => onDownload(v.url)} />
           </Tooltip>
@@ -328,6 +336,7 @@ interface VideoFeedProps {
   onViewModeChange: (m: FeedViewMode) => void
   onCheck: () => void
   onAnalyzeVideo: (v: NewVideoItem) => void
+  onTranscriptVideo: (v: NewVideoItem) => void
   onDownloadVideo: (url: string) => void
   onDownloadAllNew: () => void
   onMarkAllRead: () => void
@@ -354,6 +363,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   onViewModeChange,
   onCheck,
   onAnalyzeVideo,
+  onTranscriptVideo,
   onDownloadVideo,
   onDownloadAllNew,
   onMarkAllRead,
@@ -481,6 +491,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 onDownload={onDownloadVideo}
                 onDismiss={onDismiss}
                 onAnalyze={onAnalyzeVideo}
+                onTranscript={onTranscriptVideo}
               />
             ))}
           </div>
@@ -495,6 +506,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 onDownload={onDownloadVideo}
                 onDismiss={onDismiss}
                 onAnalyze={onAnalyzeVideo}
+                onTranscript={onTranscriptVideo}
               />
             ))}
           </div>
