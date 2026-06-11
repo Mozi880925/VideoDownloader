@@ -50,7 +50,7 @@ export interface NewVideoRow {
   duration: number
   view_count: number
   discovered_at: number
-  status: string             // 'new' | 'dismissed'
+  status: string             // 'new' | 'dismissed' | 'seen'
 }
 
 // ---- 数据库初始化 ----
@@ -164,6 +164,7 @@ export function initDb(): void {
     db.exec(`ALTER TABLE channel_new_videos ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`)
     console.log('[db] migration: added `view_count` column to channel_new_videos')
   }
+
 
   console.log('[db] database initialized')
 }
@@ -308,19 +309,31 @@ export function deleteSubscription(id: string): void {
   console.log('[db] deleted subscription:', id)
 }
 
+/**
+ * 插入或刷新视频缓存（UPSERT）：
+ * - 不存在的行：按传入 status 插入
+ * - 已存在的行：只刷新元数据（标题/缩略图/日期/时长/播放量），不动 status 和 discovered_at
+ *   播放量会随时间增长，每次检查都刷新，爆款探测才有意义；传入值为空/0 时保留旧值
+ */
 export function insertNewVideos(rows: NewVideoRow[]): number {
   if (rows.length === 0) return 0
   const stmt = ensureDb().prepare(
-    `INSERT OR IGNORE INTO channel_new_videos
+    `INSERT INTO channel_new_videos
       (id, channel_id, title, url, thumbnail, upload_date, duration, view_count, discovered_at, status)
-     VALUES (@id, @channel_id, @title, @url, @thumbnail, @upload_date, @duration, @view_count, @discovered_at, @status)`,
+     VALUES (@id, @channel_id, @title, @url, @thumbnail, @upload_date, @duration, @view_count, @discovered_at, @status)
+     ON CONFLICT(id, channel_id) DO UPDATE SET
+       title = CASE WHEN excluded.title <> '' THEN excluded.title ELSE channel_new_videos.title END,
+       thumbnail = CASE WHEN excluded.thumbnail <> '' THEN excluded.thumbnail ELSE channel_new_videos.thumbnail END,
+       upload_date = CASE WHEN excluded.upload_date <> '' THEN excluded.upload_date ELSE channel_new_videos.upload_date END,
+       duration = CASE WHEN excluded.duration > 0 THEN excluded.duration ELSE channel_new_videos.duration END,
+       view_count = CASE WHEN excluded.view_count > 0 THEN excluded.view_count ELSE channel_new_videos.view_count END`,
   )
-  const insertMany = ensureDb().transaction((items: NewVideoRow[]) => {
+  const upsertMany = ensureDb().transaction((items: NewVideoRow[]) => {
     let cnt = 0
     for (const r of items) { const info = stmt.run(r); cnt += info.changes }
     return cnt
   })
-  return insertMany(rows)
+  return upsertMany(rows)
 }
 
 export function listNewVideos(channelId?: string): NewVideoRow[] {

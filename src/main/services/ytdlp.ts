@@ -760,6 +760,8 @@ export function fetchVideoList(url: string, limit = 30, proxy?: string): Promise
       '--dump-single-json',
       '--flat-playlist',
       '--playlist-items', `1-${limit}`,
+      // flat 模式下 YouTube 默认不带 upload_date，此参数从“3 weeks ago”等文本推出近似日期
+      '--extractor-args', 'youtubetab:approximate_date',
       ...buildBaseArgs(proxy),
       cleanUrl,
     ]

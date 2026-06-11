@@ -1,353 +1,44 @@
-import React, { useEffect, useState, useCallback } from 'react'
-import {
-  Card,
-  Button,
-  Input,
-  Space,
-  Tag,
-  Empty,
-  Switch,
-  Select,
-  Popconfirm,
-  message,
-  Modal,
-  Badge,
-  Tooltip,
-  Spin,
-  Popover,
-  AutoComplete,
-} from 'antd'
-import {
-  PlusOutlined,
-  ReloadOutlined,
-  DeleteOutlined,
-  LinkOutlined,
-  EyeOutlined,
-  DownloadOutlined,
-  ClockCircleOutlined,
-  BellOutlined,
-  AppstoreOutlined,
-  UnorderedListOutlined,
-  FireOutlined,
-  PushpinOutlined,
-  PushpinFilled,
-  FolderOutlined,
-} from '@ant-design/icons'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import { AutoComplete, Button, Input, Modal, Select, Space, message } from 'antd'
+import { ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import { useDownloadStore } from '../../store/downloadStore'
 import VideoListPicker from '../../components/VideoListPicker'
 import type { CheckInterval } from '../../../shared/types'
+import ChannelList from './ChannelList'
+import VideoFeed, { type FeedFilter, type FeedSort, type FeedViewMode } from './VideoFeed'
 
-// ---- 工具函数 ----
-
-function formatTime(ts: number): string {
-  if (!ts) return '从未'
-  const d = new Date(ts)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function formatUploadDate(yyyymmdd?: string): string {
-  if (!yyyymmdd || yyyymmdd.length !== 8) return ''
-  return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
-}
-
-function formatViewCount(n?: number): string {
-  if (!n) return ''
-  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}亿`
-  if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万`
-  return n.toLocaleString()
-}
-
-function formatDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) return ''
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-// ---- 单条视频行 ----
-
-interface VideoRowProps {
-  v: NewVideoItem
-  isHot?: boolean
-  onDownload: (url: string) => void
-  onDismiss?: (videoId: string, channelId: string) => void
-}
-
-const VideoRow: React.FC<VideoRowProps> = ({ v, isHot, onDownload, onDismiss }) => {
-  const isNew = v.status === 'new'
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        gap: 10,
-        padding: '8px 10px',
-        background: isNew ? '#f0f5ff' : '#fafafa',
-        borderRadius: 6,
-        border: `1px solid ${isNew ? '#d6e4ff' : '#f0f0f0'}`,
-        borderLeft: `3px solid ${isNew ? '#1677ff' : '#e0e0e0'}`,
-        opacity: isNew ? 1 : 0.8,
-        transition: 'opacity 0.2s',
-      }}
-    >
-      {/* 缩略图 */}
-      <div
-        style={{
-          width: 88,
-          height: 50,
-          borderRadius: 4,
-          overflow: 'hidden',
-          background: '#e8e8e8',
-          flexShrink: 0,
-          position: 'relative',
-        }}
-      >
-        {v.thumbnail && (
-          <img
-            src={v.thumbnail}
-            alt=""
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-          />
-        )}
-        {v.duration && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 2,
-              right: 4,
-              fontSize: 10,
-              color: '#fff',
-              background: 'rgba(0,0,0,0.6)',
-              padding: '0 3px',
-              borderRadius: 2,
-            }}
-          >
-            {formatDuration(v.duration)}
-          </div>
-        )}
-      </div>
-
-      {/* 标题 + 日期 */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: isNew ? 500 : 400,
-            color: isNew ? '#1a1a1a' : '#555',
-            marginBottom: 4,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            lineHeight: '1.4',
-          }}
-          title={v.title}
-        >
-          {isNew && (
-            <Tag color="blue" style={{ fontSize: 10, padding: '0 4px', marginRight: 4, lineHeight: '16px', height: 16 }}>新</Tag>
-          )}
-          {isHot && (
-            <Tag color="red" icon={<FireOutlined />} style={{ fontSize: 10, padding: '0 4px', marginRight: 4, lineHeight: '16px', height: 16 }}>爆款</Tag>
-          )}
-          {v.title}
-        </div>
-        <div style={{ fontSize: 11, color: '#aaa', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {formatUploadDate(v.uploadDate)}
-          {v.viewCount ? (
-            <span style={{ color: '#888' }}>👁 {formatViewCount(v.viewCount)}</span>
-          ) : null}
-        </div>
-      </div>
-
-      {/* 操作按钮 */}
-      <Space size={2} style={{ flexShrink: 0, alignSelf: 'center' }}>
-        <Tooltip title="加入批量下载">
-          <Button
-            size="small"
-            type="text"
-            icon={<DownloadOutlined />}
-            onClick={() => onDownload(v.url)}
-          />
-        </Tooltip>
-        <Tooltip title="在浏览器打开">
-          <Button
-            size="small"
-            type="text"
-            icon={<LinkOutlined />}
-            onClick={() => window.open(v.url, '_blank')}
-          />
-        </Tooltip>
-        {isNew && onDismiss && (
-          <Tooltip title="标为已读">
-            <Button
-              size="small"
-              type="text"
-              icon={<EyeOutlined />}
-              style={{ color: '#1677ff' }}
-              onClick={() => onDismiss(v.id, v.channelId)}
-            />
-          </Tooltip>
-        )}
-      </Space>
-    </div>
-  )
-}
-
-// ---- 单条视频卡片（卡片模式） ----
-
-const VideoCard: React.FC<VideoRowProps> = ({ v, isHot, onDownload, onDismiss }) => {
-  const isNew = v.status === 'new'
-  return (
-    <div style={{
-      borderRadius: 8,
-      overflow: 'hidden',
-      border: `1px solid ${isNew ? '#d6e4ff' : '#f0f0f0'}`,
-      background: isNew ? '#f0f5ff' : '#fff',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
-      {/* 缩略图 */}
-      <div style={{ position: 'relative', paddingTop: '56.25%', background: '#e8e8e8' }}>
-        {v.thumbnail && (
-          <img
-            src={v.thumbnail}
-            alt=""
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-          />
-        )}
-        {v.duration && (
-          <div style={{
-            position: 'absolute', bottom: 4, right: 6,
-            fontSize: 10, color: '#fff', background: 'rgba(0,0,0,0.65)',
-            padding: '1px 4px', borderRadius: 2,
-          }}>
-            {formatDuration(v.duration)}
-          </div>
-        )}
-        {isNew && (
-          <div style={{
-            position: 'absolute', top: 4, left: 4,
-            background: '#1677ff', color: '#fff',
-            fontSize: 10, padding: '1px 5px', borderRadius: 3,
-          }}>新</div>
-        )}
-      </div>
-      {/* 内容 */}
-      <div style={{ padding: '8px 10px', flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{
-          fontSize: 12, fontWeight: isNew ? 600 : 400, color: isNew ? '#1a1a1a' : '#555',
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-          overflow: 'hidden', lineHeight: '1.4',
-        }} title={v.title}>
-          {isHot && <FireOutlined style={{ color: '#f5222d', marginRight: 3, fontSize: 11 }} />}
-          {v.title}
-        </div>
-        <div style={{ fontSize: 11, color: '#aaa', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          {formatUploadDate(v.uploadDate) && <span>{formatUploadDate(v.uploadDate)}</span>}
-          {v.viewCount ? <span>👁 {formatViewCount(v.viewCount)}</span> : null}
-        </div>
-        <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
-          <Tooltip title="加入批量下载">
-            <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => onDownload(v.url)} />
-          </Tooltip>
-          <Tooltip title="在浏览器打开">
-            <Button size="small" type="text" icon={<LinkOutlined />} onClick={() => window.open(v.url, '_blank')} />
-          </Tooltip>
-          {isNew && onDismiss && (
-            <Tooltip title="标为已读">
-              <Button size="small" type="text" icon={<EyeOutlined />} style={{ color: '#1677ff' }}
-                onClick={() => onDismiss(v.id, v.channelId)} />
-            </Tooltip>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---- 分组编辑器（Popover 形式） ----
-
-interface GroupEditorProps {
-  current: string
-  knownGroups: string[]
-  onSave: (groupName: string) => void
-}
-
-const GroupEditor: React.FC<GroupEditorProps> = ({ current, knownGroups, onSave }) => {
-  const [open, setOpen] = useState(false)
-  const [val, setVal] = useState(current)
-  useEffect(() => { setVal(current) }, [current, open])
-
-  return (
-    <Popover
-      trigger="click"
-      open={open}
-      onOpenChange={setOpen}
-      content={
-        <div style={{ width: 220 }}>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>所属分组</div>
-          <AutoComplete
-            value={val}
-            onChange={setVal}
-            options={knownGroups.filter((g) => g).map((g) => ({ value: g }))}
-            placeholder="输入或选择分组（留空 = 未分组）"
-            style={{ width: '100%' }}
-            allowClear
-          />
-          <div style={{ marginTop: 8, display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-            <Button size="small" onClick={() => setOpen(false)}>取消</Button>
-            <Button
-              size="small"
-              type="primary"
-              onClick={() => {
-                onSave((val ?? '').trim())
-                setOpen(false)
-              }}
-            >
-              保存
-            </Button>
-          </div>
-        </div>
-      }
-    >
-      <Tooltip title={current ? `分组：${current}` : '设置分组'}>
-        <Button
-          size="small"
-          icon={<FolderOutlined />}
-          type={current ? 'default' : 'text'}
-        >
-          {current || '分组'}
-        </Button>
-      </Tooltip>
-    </Popover>
-  )
-}
-
-// ---- 主页面 ----
+// ────────── 频道订阅（双栏布局：左侧频道列表 + 右侧视频流） ──────────
 
 const Subscriptions: React.FC = () => {
+  // ── 数据 ──
   const [subs, setSubs] = useState<ChannelSubscription[]>([])
   const [channelVideos, setChannelVideos] = useState<NewVideoItem[]>([])
-  const [videoSort, setVideoSort] = useState<'date' | 'views'>('date')
   const [loading, setLoading] = useState(false)
   const [checkingAll, setCheckingAll] = useState(false)
   const [checkingSubId, setCheckingSubId] = useState<string | null>(null)
+
+  // ── 视图状态 ──
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('all')
+  const [filter, setFilter] = useState<FeedFilter>('all')
+  const [sort, setSort] = useState<FeedSort>('date')
+  const [viewMode, setViewMode] = useState<FeedViewMode>('list')
+  const [paneCollapsed, setPaneCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('vd_sub_pane_collapsed') === '1' } catch { return false }
+  })
+  const togglePaneCollapsed = () => setPaneCollapsed((prev) => {
+    const next = !prev
+    try { localStorage.setItem('vd_sub_pane_collapsed', next ? '1' : '0') } catch {}
+    return next
+  })
+
+  // ── 弹窗 ──
   const [addOpen, setAddOpen] = useState(false)
   const [addUrl, setAddUrl] = useState('')
   const [addName, setAddName] = useState('')
   const [adding, setAdding] = useState(false)
   const [viewSub, setViewSub] = useState<ChannelSubscription | null>(null)
-  // 每个频道是否展开视频列表
-  const [expandedChannels, setExpandedChannels] = useState<Set<string>>(new Set())
-  // 每个频道的视频视图模式：list | card
-  const [videoViewMode, setVideoViewMode] = useState<Record<string, 'list' | 'card'>>({})
-  const getViewMode = (id: string) => videoViewMode[id] ?? 'list'
-  const toggleViewMode = (id: string) =>
-    setVideoViewMode((prev) => ({ ...prev, [id]: prev[id] === 'card' ? 'list' : 'card' }))
+  const [groupEditSub, setGroupEditSub] = useState<ChannelSubscription | null>(null)
+  const [groupVal, setGroupVal] = useState('')
 
   const interval = useDownloadStore((s) => s.appSettings.subscriptionCheckInterval || '6h')
   const updateSettings = useDownloadStore((s) => s.updateSettings)
@@ -358,10 +49,10 @@ const Subscriptions: React.FC = () => {
     try {
       const [list, allVids] = await Promise.all([
         window.api.subList(),
-        window.api.subListNewVideos(),   // 返回所有状态，不过滤
+        window.api.subListNewVideos(),   // 返回所有状态（new + seen + dismissed）
       ])
       setSubs(list)
-      setChannelVideos(allVids)          // 包含 new + seen
+      setChannelVideos(allVids)
     } finally {
       setLoading(false)
     }
@@ -374,50 +65,91 @@ const Subscriptions: React.FC = () => {
     return () => off()
   }, [refresh])
 
-  // 按频道分组所有视频，最多保留最近 10 条
-  const videosByChannel = channelVideos.reduce<Record<string, NewVideoItem[]>>((acc, v) => {
-    if (!acc[v.channelId]) acc[v.channelId] = []
-    acc[v.channelId].push(v)
-    return acc
-  }, {})
+  // 选中的频道被删除后回退到「全部」
+  useEffect(() => {
+    if (selectedChannelId !== 'all' && subs.length > 0 && !subs.some((s) => s.id === selectedChannelId)) {
+      setSelectedChannelId('all')
+    }
+  }, [subs, selectedChannelId])
 
-  // 已知分组列表（去重 + 按字母序）
-  const knownGroups = Array.from(
-    new Set(subs.map((s) => s.group ?? '').filter((g) => g))
-  ).sort((a, b) => a.localeCompare(b))
+  // ── 派生数据 ──
 
-  // 把订阅按 pinned + group 分桶（pinned 单独成段，置顶不再受 group 影响）
-  const grouped: { key: string; label: string; subs: ChannelSubscription[] }[] = []
-  const pinned = subs.filter((s) => s.pinned)
-  if (pinned.length > 0) grouped.push({ key: '__pinned__', label: '📌 置顶', subs: pinned })
+  // 按频道分组，每频道按发布日期降序保留最近 20 条
+  const videosByChannel = useMemo(() => {
+    const map: Record<string, NewVideoItem[]> = {}
+    for (const v of channelVideos) {
+      if (!map[v.channelId]) map[v.channelId] = []
+      map[v.channelId].push(v)
+    }
+    const cmp = (a: NewVideoItem, b: NewVideoItem) => {
+      const d = (b.uploadDate ?? '').localeCompare(a.uploadDate ?? '')
+      return d !== 0 ? d : b.discoveredAt - a.discoveredAt
+    }
+    for (const k of Object.keys(map)) map[k] = map[k].sort(cmp).slice(0, 20)
+    return map
+  }, [channelVideos])
 
-  const nonPinned = subs.filter((s) => !s.pinned)
-  const grpMap: Record<string, ChannelSubscription[]> = {}
-  for (const s of nonPinned) {
-    const k = s.group || '__ungrouped__'
-    if (!grpMap[k]) grpMap[k] = []
-    grpMap[k].push(s)
-  }
-  // 命名分组按字母序
-  Object.keys(grpMap)
-    .filter((k) => k !== '__ungrouped__')
-    .sort((a, b) => a.localeCompare(b))
-    .forEach((k) => grouped.push({ key: k, label: k, subs: grpMap[k] }))
-  // 未分组放最后
-  if (grpMap['__ungrouped__']) {
-    grouped.push({ key: '__ungrouped__', label: '未分组', subs: grpMap['__ungrouped__'] })
-  }
+  // 爆款阈值：频道播放量中位数 × 2（中位数比均值更抗爆款值自身的拉高；样本 < 5 不判定）
+  const hotThresholds = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const [cid, vids] of Object.entries(videosByChannel)) {
+      const views = vids.map((v) => v.viewCount ?? 0).filter((n) => n > 0).sort((a, b) => a - b)
+      if (views.length >= 5) map[cid] = views[Math.floor(views.length / 2)] * 2
+    }
+    return map
+  }, [videosByChannel])
 
-  const toggleExpand = (id: string) => {
-    setExpandedChannels((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  const isHot = useCallback((v: NewVideoItem) => {
+    const t = hotThresholds[v.channelId]
+    return !!t && (v.viewCount ?? 0) >= t
+  }, [hotThresholds])
 
-  // ---- 操作 ----
+  // 当前作用域内的视频（全部聚合 或 单频道）
+  const scopeVideos = useMemo(() => (
+    selectedChannelId === 'all'
+      ? Object.values(videosByChannel).flat()
+      : videosByChannel[selectedChannelId] ?? []
+  ), [videosByChannel, selectedChannelId])
+
+  const counts = useMemo(() => ({
+    all: scopeVideos.length,
+    new: scopeVideos.filter((v) => v.status === 'new').length,
+    hot: scopeVideos.filter(isHot).length,
+  }), [scopeVideos, isHot])
+
+  // 筛选 + 排序后的最终视频流
+  const feedVideos = useMemo(() => {
+    let vids = scopeVideos
+    if (filter === 'new') vids = vids.filter((v) => v.status === 'new')
+    else if (filter === 'hot') vids = vids.filter(isHot)
+    const sorted = [...vids]
+    if (sort === 'views') {
+      sorted.sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0))
+    } else {
+      sorted.sort((a, b) => {
+        const d = (b.uploadDate ?? '').localeCompare(a.uploadDate ?? '')
+        return d !== 0 ? d : b.discoveredAt - a.discoveredAt
+      })
+    }
+    return sorted
+  }, [scopeVideos, filter, sort, isHot])
+
+  const channelNames = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const s of subs) m[s.id] = s.name
+    return m
+  }, [subs])
+
+  const knownGroups = useMemo(() => (
+    Array.from(new Set(subs.map((s) => s.group ?? '').filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  ), [subs])
+
+  const totalNewCount = useMemo(() => subs.reduce((n, s) => n + s.newCount, 0), [subs])
+
+  const selectedSub = selectedChannelId === 'all' ? undefined : subs.find((s) => s.id === selectedChannelId)
+  const feedMode: 'all' | 'channel' = selectedChannelId === 'all' ? 'all' : 'channel'
+
+  // ── 操作 ──
 
   const handleAdd = async () => {
     const url = addUrl.trim()
@@ -430,8 +162,7 @@ const Subscriptions: React.FC = () => {
         setAddOpen(false)
         setAddUrl('')
         setAddName('')
-        // 添加后自动展开新频道的视频列表
-        setExpandedChannels((prev) => new Set([...prev, r.data.id]))
+        setSelectedChannelId(r.data.id)   // 自动选中新频道
         await refresh()
       } else {
         message.error(r.errorMessage || '添加失败')
@@ -446,12 +177,9 @@ const Subscriptions: React.FC = () => {
     try {
       const r = await window.api.subCheck(id)
       if (r.status === 'success') {
-        if (r.data.length > 0) {
-          message.success(`发现 ${r.data.length} 个新视频`)
-          setExpandedChannels((prev) => new Set([...prev, id]))
-        } else {
-          message.info('没有新视频，已更新最近视频列表')
-        }
+        if (r.data.length > 0) message.success(`发现 ${r.data.length} 个新视频`)
+        else message.info('没有新视频，已更新最近视频列表')
+        setSelectedChannelId(id)   // 检查哪个频道就切到哪个频道
         await refresh()
       } else {
         message.error(r.errorMessage || '检查失败')
@@ -470,9 +198,6 @@ const Subscriptions: React.FC = () => {
       const failed = results.filter((r) => r.err).length
       if (total > 0) {
         message.success(`检查完成：发现 ${total} 个新视频${failed ? `（${failed} 个失败）` : ''}`)
-        // 有新视频的频道自动展开
-        const withNew = results.filter((r) => r.newVideos.length > 0).map((r) => r.subId)
-        setExpandedChannels((prev) => new Set([...prev, ...withNew]))
       } else if (failed > 0) {
         message.warning(`检查完成，但有 ${failed} 个失败`)
       } else {
@@ -484,24 +209,41 @@ const Subscriptions: React.FC = () => {
     }
   }
 
-  const handleRemove = async (id: string) => {
-    await window.api.subRemove(id)
-    message.success('已删除')
-    await refresh()
+  const handleRemove = (sub: ChannelSubscription) => {
+    Modal.confirm({
+      title: `删除订阅「${sub.name}」？`,
+      content: '同时清除此频道缓存的全部视频记录',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        await window.api.subRemove(sub.id)
+        if (selectedChannelId === sub.id) setSelectedChannelId('all')
+        message.success('已删除')
+        await refresh()
+      },
+    })
   }
 
-  const handleToggle = async (id: string, enabled: boolean) => {
-    await window.api.subToggle(id, enabled)
-    setSubs((prev) => prev.map((s) => (s.id === id ? { ...s, enabled } : s)))
+  const handleToggleEnabled = async (sub: ChannelSubscription) => {
+    await window.api.subToggle(sub.id, !sub.enabled)
+    setSubs((prev) => prev.map((s) => (s.id === sub.id ? { ...s, enabled: !sub.enabled } : s)))
   }
 
-  const handleTogglePin = async (id: string, pinned: boolean) => {
-    await window.api.subSetPinned(id, pinned)
-    await refresh()  // 刷新让排序立即生效
+  const handleTogglePin = async (sub: ChannelSubscription) => {
+    await window.api.subSetPinned(sub.id, !sub.pinned)
+    await refresh()   // 刷新让左栏排序立即生效
   }
 
-  const handleSetGroup = async (id: string, groupName: string) => {
-    await window.api.subSetGroup(id, groupName)
+  const openGroupEditor = (sub: ChannelSubscription) => {
+    setGroupEditSub(sub)
+    setGroupVal(sub.group ?? '')
+  }
+
+  const handleSaveGroup = async () => {
+    if (!groupEditSub) return
+    await window.api.subSetGroup(groupEditSub.id, groupVal.trim())
+    setGroupEditSub(null)
     await refresh()
   }
 
@@ -519,66 +261,71 @@ const Subscriptions: React.FC = () => {
       ),
     )
     setSubs((prev) =>
-      prev.map((s) => s.id === channelId ? { ...s, newCount: Math.max(0, s.newCount - 1) } : s),
+      prev.map((s) => (s.id === channelId ? { ...s, newCount: Math.max(0, s.newCount - 1) } : s)),
     )
   }
 
-  const handleClearChannel = async (channelId: string) => {
-    await window.api.subClearNewVideos(channelId)
-    setChannelVideos((prev) =>
-      prev.map((v) =>
-        v.channelId === channelId && v.status === 'new' ? { ...v, status: 'dismissed' as const } : v,
-      ),
-    )
-    setSubs((prev) => prev.map((s) => s.id === channelId ? { ...s, newCount: 0 } : s))
+  const handleMarkAllRead = async () => {
+    if (selectedChannelId === 'all') {
+      const targets = subs.filter((s) => s.newCount > 0)
+      await Promise.all(targets.map((s) => window.api.subClearNewVideos(s.id)))
+      setChannelVideos((prev) =>
+        prev.map((v) => (v.status === 'new' ? { ...v, status: 'dismissed' as const } : v)),
+      )
+      setSubs((prev) => prev.map((s) => ({ ...s, newCount: 0 })))
+    } else {
+      await window.api.subClearNewVideos(selectedChannelId)
+      setChannelVideos((prev) =>
+        prev.map((v) =>
+          v.channelId === selectedChannelId && v.status === 'new' ? { ...v, status: 'dismissed' as const } : v,
+        ),
+      )
+      setSubs((prev) => prev.map((s) => (s.id === selectedChannelId ? { ...s, newCount: 0 } : s)))
+    }
+    message.success('已全部标记已读')
   }
 
-  const handleAddToBatch = (urls: string[]) => {
-    if (urls.length === 0) return
+  const handleDownloadVideo = (url: string) => {
+    commitBatchUrls([url])
+    message.success('已发送到批量下载')
+  }
+
+  const handleDownloadAllNew = () => {
+    const urls = scopeVideos.filter((v) => v.status === 'new').map((v) => v.url)
+    if (urls.length === 0) { message.info('当前没有新视频'); return }
     commitBatchUrls(urls)
     message.success(`已发送 ${urls.length} 个链接到批量下载`)
   }
 
-  return (
-    <div style={{ padding: 24 }}>
-      {/* 标题 */}
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            fontSize: 28, fontWeight: 700,
-            background: 'linear-gradient(90deg, #1677ff, #4096ff)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            margin: 0,
-          }}
-        >
-          频道订阅
-        </h1>
-        <p style={{ color: '#888', marginTop: 8, marginBottom: 0 }}>
-          监控 YouTube 频道更新，新视频会通过桌面通知提醒你
-        </p>
-      </div>
+  // ── 渲染 ──
 
-      {/* 工具栏 */}
-      <Card style={{ marginBottom: 16, borderRadius: 8 }} bodyStyle={{ padding: '12px 16px' }}>
-        <Space size="middle" wrap>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
-            添加订阅
-          </Button>
-          <Button
-            icon={<ReloadOutlined />}
-            loading={checkingAll}
-            disabled={subs.length === 0}
-            onClick={handleCheckAll}
+  return (
+    <div style={{ padding: 24, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      {/* 页头 */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
+        <div>
+          <h1
+            style={{
+              fontSize: 28, fontWeight: 700,
+              background: 'linear-gradient(90deg, #1677ff, #4096ff)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              margin: 0,
+            }}
           >
-            立即检查全部
-          </Button>
-          <span style={{ color: '#888' }}>
-            <ClockCircleOutlined style={{ marginRight: 4 }} />自动检查间隔：
+            频道订阅
+          </h1>
+          <p style={{ color: '#888', marginTop: 6, marginBottom: 0 }}>
+            监控对标频道更新，新视频和爆款一目了然
+          </p>
+        </div>
+        <Space>
+          <span style={{ color: '#888', fontSize: 13 }}>
+            <ClockCircleOutlined style={{ marginRight: 4 }} />自动检查
           </span>
           <Select
             value={interval}
             onChange={handleIntervalChange}
-            style={{ width: 120 }}
+            style={{ width: 110 }}
             options={[
               { label: '关闭', value: 'off' },
               { label: '每小时', value: 'hourly' },
@@ -586,229 +333,54 @@ const Subscriptions: React.FC = () => {
               { label: '每天', value: 'daily' },
             ]}
           />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
+            添加订阅
+          </Button>
         </Space>
-      </Card>
+      </div>
 
-      {/* 订阅列表 */}
-      <Spin spinning={loading}>
-        {subs.length === 0 ? (
-          <Card style={{ borderRadius: 8 }}>
-            <Empty description="还没有订阅，点击右上方「添加订阅」开始" />
-          </Card>
-        ) : (
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            {grouped.map((group) => (
-              <div key={group.key}>
-                {/* 分组标题（只有当存在多个分组或非默认未分组时才显示） */}
-                {grouped.length > 1 && (
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: '#666',
-                      marginBottom: 8,
-                      paddingLeft: 4,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <span>{group.label}</span>
-                    <span style={{ color: '#bbb', fontWeight: 400, fontSize: 12 }}>
-                      ({group.subs.length})
-                    </span>
-                  </div>
-                )}
-                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                  {group.subs.map((sub) => {
-              const rawVids = (videosByChannel[sub.id] || []).slice(0, 20)
-              // 排序
-              const allVids = [...rawVids].sort((a, b) => {
-                if (videoSort === 'views') return (b.viewCount ?? 0) - (a.viewCount ?? 0)
-                return (b.uploadDate ?? '') > (a.uploadDate ?? '') ? 1 : -1
-              })
-              // 爆款阈值：频道均值 2x
-              const avgViews = allVids.length > 0
-                ? allVids.reduce((s, v) => s + (v.viewCount ?? 0), 0) / allVids.length
-                : 0
-              const hotThreshold = avgViews * 2
-              const newVids = allVids.filter((v) => v.status === 'new')
-              const isExpanded = expandedChannels.has(sub.id)
-
-              return (
-                <Card
-                  key={sub.id}
-                  style={{
-                    borderRadius: 8,
-                    borderColor: sub.pinned ? '#ffc53d' : undefined,
-                    background: sub.pinned ? '#fffbe6' : undefined,
-                  }}
-                  bodyStyle={{ padding: 16 }}
-                  title={
-                    <Space>
-                      <Badge count={sub.newCount} offset={[0, 0]}>
-                        <BellOutlined style={{ fontSize: 18, color: sub.newCount > 0 ? '#1677ff' : '#bbb' }} />
-                      </Badge>
-                      <span style={{ fontSize: 16, fontWeight: 600 }}>{sub.name}</span>
-                      {sub.pinned && <Tag color="gold" icon={<PushpinFilled />}>置顶</Tag>}
-                      {sub.group && <Tag color="default">{sub.group}</Tag>}
-                      {!sub.enabled && <Tag color="default">已暂停</Tag>}
-                    </Space>
-                  }
-                  extra={
-                    <Space>
-                      <Tooltip title={sub.enabled ? '暂停自动检查' : '恢复自动检查'}>
-                        <Switch size="small" checked={sub.enabled} onChange={(v) => handleToggle(sub.id, v)} />
-                      </Tooltip>
-                      <Tooltip title={sub.pinned ? '取消置顶' : '置顶'}>
-                        <Button
-                          size="small"
-                          icon={sub.pinned ? <PushpinFilled style={{ color: '#fa8c16' }} /> : <PushpinOutlined />}
-                          onClick={() => handleTogglePin(sub.id, !sub.pinned)}
-                        />
-                      </Tooltip>
-                      <GroupEditor
-                        current={sub.group ?? ''}
-                        knownGroups={knownGroups}
-                        onSave={(g) => handleSetGroup(sub.id, g)}
-                      />
-                      <Button
-                        size="small"
-                        icon={<AppstoreOutlined />}
-                        onClick={() => setViewSub(sub)}
-                      >
-                        查看全部视频
-                      </Button>
-                      <Button
-                        size="small"
-                        icon={<ReloadOutlined />}
-                        loading={checkingSubId === sub.id}
-                        onClick={() => handleCheckOne(sub.id)}
-                      >
-                        检查
-                      </Button>
-                      <Popconfirm
-                        title="删除订阅？"
-                        description="同时清除此频道的全部新视频记录"
-                        okText="删除" cancelText="取消"
-                        onConfirm={() => handleRemove(sub.id)}
-                      >
-                        <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
-                      </Popconfirm>
-                    </Space>
-                  }
-                >
-                  {/* 基本信息 */}
-                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                    <div style={{ color: '#888', fontSize: 12 }}>
-                      <LinkOutlined style={{ marginRight: 4 }} />
-                      <a href={sub.url} target="_blank" rel="noreferrer">{sub.url}</a>
-                    </div>
-                    <div style={{ color: '#888', fontSize: 12 }}>
-                      <ClockCircleOutlined style={{ marginRight: 4 }} />
-                      上次检查：{formatTime(sub.lastCheckedAt)}
-                    </div>
-                  </Space>
-
-                  {/* 视频列表区域 */}
-                  {allVids.length > 0 && (
-                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #eee' }}>
-                      {/* 区域头部 */}
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-                        <span
-                          style={{ fontSize: 12, color: '#666', cursor: 'pointer', userSelect: 'none' }}
-                          onClick={() => toggleExpand(sub.id)}
-                        >
-                          {isExpanded ? '▾' : '▸'}{' '}
-                          <strong>最近视频</strong>
-                          <span style={{ color: '#aaa', marginLeft: 4 }}>({allVids.length} 条)</span>
-                        </span>
-                        {newVids.length > 0 && (
-                          <Tag color="blue" icon={<FireOutlined />} style={{ fontSize: 11, cursor: 'default' }}>
-                            {newVids.length} 条新视频
-                          </Tag>
-                        )}
-                        {isExpanded && (
-                          <>
-                            <Select
-                              size="small"
-                              value={videoSort}
-                              onChange={setVideoSort}
-                              style={{ width: 100 }}
-                              options={[
-                                { label: '按日期', value: 'date' },
-                                { label: '按播放量', value: 'views' },
-                              ]}
-                            />
-                            <Tooltip title={getViewMode(sub.id) === 'list' ? '切换卡片视图' : '切换列表视图'}>
-                              <Button
-                                size="small"
-                                icon={getViewMode(sub.id) === 'list' ? <AppstoreOutlined /> : <UnorderedListOutlined />}
-                                onClick={() => toggleViewMode(sub.id)}
-                              />
-                            </Tooltip>
-                          </>
-                        )}
-                        {newVids.length > 0 && isExpanded && (
-                          <Space size={4} style={{ marginLeft: 'auto' }}>
-                            <Button size="small" type="link" icon={<DownloadOutlined />} style={{ padding: 0, fontSize: 12 }}
-                              onClick={() => handleAddToBatch(newVids.map((v) => v.url))}>
-                              全部下载新视频
-                            </Button>
-                            <Button size="small" type="link" icon={<EyeOutlined />} style={{ padding: 0, fontSize: 12 }}
-                              onClick={() => handleClearChannel(sub.id)}>
-                              全部标记已读
-                            </Button>
-                          </Space>
-                        )}
-                      </div>
-
-                      {/* 视频列表（展开时显示） */}
-                      {isExpanded && (
-                        getViewMode(sub.id) === 'card' ? (
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                            {allVids.map((v) => (
-                              <VideoCard
-                                key={`${v.channelId}-${v.id}`}
-                                v={v}
-                                isHot={hotThreshold > 0 && (v.viewCount ?? 0) >= hotThreshold}
-                                onDownload={(url) => handleAddToBatch([url])}
-                                onDismiss={handleDismiss}
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                            {allVids.map((v) => (
-                              <VideoRow
-                                key={`${v.channelId}-${v.id}`}
-                                v={v}
-                                isHot={hotThreshold > 0 && (v.viewCount ?? 0) >= hotThreshold}
-                                onDownload={(url) => handleAddToBatch([url])}
-                                onDismiss={handleDismiss}
-                              />
-                            ))}
-                          </Space>
-                        )
-                      )}
-                    </div>
-                  )}
-
-                  {/* 无视频缓存时的提示 */}
-                  {allVids.length === 0 && (
-                    <div style={{ marginTop: 10, color: '#bbb', fontSize: 12, paddingTop: 10, borderTop: '1px dashed #eee' }}>
-                      暂无视频缓存，点击「检查」拉取最新视频
-                    </div>
-                  )}
-                </Card>
-              )
-            })}
-                </Space>
-              </div>
-            ))}
-          </Space>
-        )}
-      </Spin>
+      {/* 双栏主体 */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 16 }}>
+        <ChannelList
+          subs={subs}
+          selectedId={selectedChannelId}
+          totalNewCount={totalNewCount}
+          checkingSubId={checkingSubId}
+          collapsed={paneCollapsed}
+          onToggleCollapse={togglePaneCollapsed}
+          onSelect={setSelectedChannelId}
+          onCheckOne={handleCheckOne}
+          onTogglePin={handleTogglePin}
+          onToggleEnabled={handleToggleEnabled}
+          onEditGroup={openGroupEditor}
+          onViewAll={setViewSub}
+          onRemove={handleRemove}
+        />
+        <VideoFeed
+          mode={feedMode}
+          channel={selectedSub}
+          subsCount={subs.length}
+          loading={loading}
+          checking={feedMode === 'all' ? checkingAll : checkingSubId === selectedChannelId}
+          videos={feedVideos}
+          counts={counts}
+          filter={filter}
+          sort={sort}
+          viewMode={viewMode}
+          channelNames={channelNames}
+          isHot={isHot}
+          onFilterChange={setFilter}
+          onSortChange={setSort}
+          onViewModeChange={setViewMode}
+          onCheck={() => (feedMode === 'all' ? handleCheckAll() : handleCheckOne(selectedChannelId))}
+          onDownloadVideo={handleDownloadVideo}
+          onDownloadAllNew={handleDownloadAllNew}
+          onMarkAllRead={handleMarkAllRead}
+          onDismiss={handleDismiss}
+          onViewAllVideos={selectedSub ? () => setViewSub(selectedSub) : undefined}
+          onOpenAdd={() => setAddOpen(true)}
+        />
+      </div>
 
       {/* 添加订阅 Modal */}
       <Modal
@@ -848,7 +420,27 @@ const Subscriptions: React.FC = () => {
         </Space>
       </Modal>
 
-      {/* 查看全部视频 Modal */}
+      {/* 设置分组 Modal */}
+      <Modal
+        title={groupEditSub ? `设置分组：${groupEditSub.name}` : '设置分组'}
+        open={!!groupEditSub}
+        onCancel={() => setGroupEditSub(null)}
+        onOk={handleSaveGroup}
+        okText="保存"
+        cancelText="取消"
+        width={400}
+      >
+        <AutoComplete
+          value={groupVal}
+          onChange={setGroupVal}
+          options={knownGroups.map((g) => ({ value: g }))}
+          placeholder="输入或选择分组（留空 = 未分组）"
+          style={{ width: '100%' }}
+          allowClear
+        />
+      </Modal>
+
+      {/* 浏览频道全部视频 Modal */}
       <Modal
         title={viewSub ? `${viewSub.name} 的视频` : '频道视频'}
         open={!!viewSub}

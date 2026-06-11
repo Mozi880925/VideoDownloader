@@ -49,7 +49,8 @@ function rowToNewVideo(r: NewVideoRow): NewVideoItem {
     duration: r.duration || undefined,
     viewCount: r.view_count || undefined,
     discoveredAt: r.discovered_at,
-    status: r.status === 'dismissed' ? 'dismissed' : 'new',
+    // 注意：seen（基线缓存）不能映射成 new，否则旧视频会被错误高亮为新视频
+    status: r.status === 'new' ? 'new' : r.status === 'dismissed' ? 'dismissed' : 'seen',
   }
 }
 
@@ -170,7 +171,7 @@ export async function checkSubscription(id: string): Promise<NewVideoItem[]> {
   }))
   const inserted = insertNewVideos(rowsToInsert)
 
-  // 把本次拉取中已存在于 seenSet 的视频也写入缓存（INSERT OR IGNORE 不会覆盖已有 'new'）
+  // 把本次拉取中已存在于 seenSet 的视频也写入缓存（UPSERT：已有行只刷新播放量等元数据，status 不变）
   const alreadySeenRows: NewVideoRow[] = fetched.videos
     .filter((v) => seenSet.has(v.id))
     .map((v) => ({
