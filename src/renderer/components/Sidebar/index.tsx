@@ -89,14 +89,14 @@ const menuItems: MenuProps['items'] = [
     ],
   },
   {
-    key: 'settings',
-    icon: <SettingOutlined />,
-    label: '设置',
-  },
-  {
     key: 'network',
     icon: <GlobalOutlined />,
     label: '网络',
+  },
+  {
+    key: 'settings',
+    icon: <SettingOutlined />,
+    label: '设置',
   },
   {
     key: 'about',

@@ -147,7 +147,7 @@ app.whenReady().then(async () => {
 
   // 读取文本文件内容（字幕查看器用）
   ipcMain.handle('fs:read-text-file', async (_event, filePath: string) => {
-    return fs.readFileSync(filePath, 'utf-8')
+    return await fs.promises.readFile(filePath, 'utf-8')
   })
 
   // 获取磁盘可用空间（传入目标目录路径）

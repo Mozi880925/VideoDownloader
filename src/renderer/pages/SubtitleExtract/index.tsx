@@ -6,7 +6,7 @@ import {
   DownloadOutlined,
   FolderOpenOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
+import { useDownloadStore, useSettingsStore, detectPlatform } from '../../store/downloadStore'
 import { formatDuration } from '../../utils/format'
 
 // ────────── 类型 ──────────
@@ -44,7 +44,7 @@ const StatusTag: React.FC<{ task: ExtractTask }> = ({ task }) => {
 type FilterStatus = 'all' | 'processing' | 'completed' | 'failed'
 
 const SubtitleExtract: React.FC = () => {
-  const appSettings = useDownloadStore(s => s.appSettings)
+  const appSettings = useSettingsStore(s => s.appSettings)
   const [urlText, setUrlText] = useState('')
   const [filter, setFilter] = useState<FilterStatus>('all')
   // 任务列表持久化

@@ -33,6 +33,7 @@ import {
 } from '@ant-design/icons'
 import {
   useDownloadStore,
+  useSettingsStore,
   detectPlatform,
   type BatchTask,
   type ParseStatus,
@@ -137,8 +138,8 @@ const BatchDownload: React.FC = () => {
   const setIsParsing = useDownloadStore((s) => s.setBatchIsParsing)
   const isDownloading = useDownloadStore((s) => s.batchIsDownloading)
   const setIsDownloading = useDownloadStore((s) => s.setBatchIsDownloading)
-  const appSettings = useDownloadStore((s) => s.appSettings)
-  const updateSettings = useDownloadStore((s) => s.updateSettings)
+  const appSettings = useSettingsStore((s) => s.appSettings)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
   const subsEnabled = appSettings.subtitles?.enabled ?? false
   const consumeBatchUrls = useDownloadStore((s) => s.consumeBatchUrls)
   const parseAbortRef = useRef(false)
@@ -314,7 +315,7 @@ const BatchDownload: React.FC = () => {
 
     // 磁盘空间预估检查（非阻塞，仅警告）
     try {
-      const baseDir = useDownloadStore.getState().appSettings.downloadPath || downloadsPath
+      const baseDir = useSettingsStore.getState().appSettings.downloadPath || downloadsPath
       if (baseDir) {
         const totalEstimated = downloadable.reduce((sum, t) => sum + (t.filesize || 0), 0)
         if (totalEstimated > 0) {
@@ -330,7 +331,7 @@ const BatchDownload: React.FC = () => {
     const queue = downloadable.map((t) => t.id)
 
     // 在启动 worker 前读取一次设置（决定并发数 + 路径模板）
-    const appSettings = useDownloadStore.getState().appSettings
+    const appSettings = useSettingsStore.getState().appSettings
 
     // Worker: 从队列中取任务并下载
     const worker = async () => {

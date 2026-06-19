@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Modal, Button, Space, Progress, Alert, Checkbox, Typography } from 'antd'
 import { AudioOutlined, FolderOpenOutlined, FileTextOutlined } from '@ant-design/icons'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/downloadStore'
 
 interface TranscribeModalProps {
   open: boolean
@@ -24,7 +24,7 @@ function genId(): string {
 }
 
 const TranscribeModal: React.FC<TranscribeModalProps> = ({ open, videoPath, videoTitle, onClose }) => {
-  const whisperCfg = useDownloadStore((s) => s.appSettings.whisper)
+  const whisperCfg = useSettingsStore((s) => s.appSettings.whisper)
 
   const [ready, setReady] = useState<{ ready: boolean; reason?: string } | null>(null)
   const [overwrite, setOverwrite] = useState(false)

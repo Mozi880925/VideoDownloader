@@ -11,7 +11,7 @@ import {
   ClearOutlined,
   CloseOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/downloadStore'
 import { formatDuration } from '../../utils/format'
 
 // ────────── 类型 ──────────
@@ -63,7 +63,7 @@ type TabMode = 'url' | 'file'
 type FilterStatus = 'all' | 'processing' | 'completed' | 'failed'
 
 const Transcription: React.FC = () => {
-  const appSettings = useDownloadStore(s => s.appSettings)
+  const appSettings = useSettingsStore(s => s.appSettings)
 
   const [tab, setTab] = useState<TabMode>('url')
   const [urlText, setUrlText] = useState('')

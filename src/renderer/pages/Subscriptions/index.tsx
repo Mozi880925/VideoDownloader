@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { AutoComplete, Button, Input, Modal, Select, Space, message } from 'antd'
 import { ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useDownloadStore, useSettingsStore } from '../../store/downloadStore'
 import VideoListPicker from '../../components/VideoListPicker'
 import type { CheckInterval } from '../../../shared/types'
 import ChannelList from './ChannelList'
@@ -70,9 +70,9 @@ const Subscriptions: React.FC = () => {
   const [transcriptData, setTranscriptData] = useState<VideoTranscript | null>(null)
   const [transcriptError, setTranscriptError] = useState<string | null>(null)
 
-  const llmConfig = useDownloadStore((s) => s.appSettings.llm)
-  const interval = useDownloadStore((s) => s.appSettings.subscriptionCheckInterval || '6h')
-  const updateSettings = useDownloadStore((s) => s.updateSettings)
+  const llmConfig = useSettingsStore((s) => s.appSettings.llm)
+  const interval = useSettingsStore((s) => s.appSettings.subscriptionCheckInterval || '6h')
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
   const commitBatchUrls = useDownloadStore((s) => s.commitBatchUrls)
 
   const refresh = useCallback(async () => {

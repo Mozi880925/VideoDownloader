@@ -28,7 +28,7 @@ import {
   PlusOutlined,
   ScissorOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
+import { useDownloadStore, useSettingsStore, detectPlatform } from '../../store/downloadStore'
 import { friendlyError } from '../../../shared/errorTranslator'
 import { extractFirstUrl, extractUrls } from '../../../shared/extractUrls'
 import { buildOutputPath } from '../../utils/buildOutputPath'
@@ -158,9 +158,9 @@ const SingleDownload: React.FC = () => {
   }
 
   // ---- 监听"重新下载"请求 ----
-  const retryUrl = useDownloadStore((s) => s.retryUrl)
-  const clearRetryUrl = useDownloadStore((s) => s.clearRetryUrl)
-  const appSettings = useDownloadStore((s) => s.appSettings)
+  const retryUrl = useSettingsStore((s) => s.retryUrl)
+  const clearRetryUrl = useSettingsStore((s) => s.clearRetryUrl)
+  const appSettings = useSettingsStore((s) => s.appSettings)
 
   // ---- 核心解析逻辑 ----
   const doParse = async (targetUrl: string) => {

@@ -564,8 +564,12 @@ export function insertTopicIdea(row: TopicIdeaRow): void {
 export function updateTopicIdea(id: string, fields: Partial<Omit<TopicIdeaRow, 'id' | 'created_at'>>): void {
   const db = ensureDb()
   const now = Date.now()
-  const sets = Object.keys(fields).map((k) => `${k} = @${k}`).join(', ')
-  db.prepare(`UPDATE topic_ideas SET ${sets}, updated_at = ${now} WHERE id = @id`).run({ ...fields, id })
+  const allowed = new Set(['title','notes','ref_url','ref_title','ref_thumbnail','status','updated_at'])
+  const entries = Object.entries(fields).filter(([k]) => allowed.has(k))
+  if (entries.length === 0) return
+  const sets = entries.map(([k]) => `${k} = @${k}`).join(', ')
+  db.prepare(`UPDATE topic_ideas SET ${sets}, updated_at = ${now} WHERE id = @id`)
+    .run({ id, ...Object.fromEntries(entries) })
 }
 
 export function deleteTopicIdea(id: string): void {

@@ -1,5 +1,5 @@
 import type { FolderOrganize } from '../../shared/types'
-import { detectPlatform } from '../store/downloadStore'
+import { detectPlatform } from './platform'
 
 /**
  * 根据设置构建 yt-dlp 的输出路径模板。

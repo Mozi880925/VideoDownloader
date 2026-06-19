@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { friendlyError } from '../../shared/errorTranslator'
-import type { AppSettings } from '../../shared/types'
+
+// ---- 从同一目录的拆分 store 和 utils 重导出，保持向后兼容 ----
+
+export { detectPlatform, PLATFORM_OPTIONS } from '../utils/platform'
+export { useSettingsStore } from './settingsStore'
 
 // ---- 批量下载任务类型（在 store 中定义以便跨组件共享）----
 
@@ -65,17 +69,12 @@ export interface FailedRecord {
   failedAt: number
 }
 
-interface DownloadStore {
+interface TaskStore {
   activeTasks: ActiveTask[]
   completedRecords: CompletedRecord[]
   failedRecords: FailedRecord[]
   dbLoaded: boolean
-  retryUrl: string | null
   pendingBatchUrls: string[]
-  
-  // 设置
-  appSettings: AppSettings
-  updateSettings: (settings: Partial<AppSettings>) => void
 
   // 筛选状态
   filterKeyword: string
@@ -105,101 +104,19 @@ interface DownloadStore {
   clearAllCompleted: () => void
   clearAllFailed: () => void
   updateRecordTags: (taskId: string, tags: string[]) => void
-  setRetryUrl: (url: string) => void
-  clearRetryUrl: () => void
   setFilterKeyword: (keyword: string) => void
   setFilterPlatform: (platform: string | null) => void
   setFilterDateRange: (range: [number, number] | null) => void
 }
 
-// ---- 从 URL 推断平台 ----
-
-export function detectPlatform(url: string): string {
-  const u = url.toLowerCase()
-  if (u.includes('youtube.com') || u.includes('youtu.be')) return 'YouTube'
-  if (u.includes('tiktok.com')) return 'TikTok'
-  if (u.includes('bilibili.com') || u.includes('b23.tv')) return 'Bilibili'
-  if (u.includes('instagram.com')) return 'Instagram'
-  if (u.includes('douyin.com') || u.includes('iesdouyin.com')) return '抖音'
-  if (u.includes('xiaohongshu.com') || u.includes('xhslink.com')) return '小红书'
-  if (u.includes('twitter.com') || u.includes('x.com')) return 'Twitter/X'
-  if (u.includes('facebook.com') || u.includes('fb.watch')) return 'Facebook'
-  return '其他'
-}
-
-// ---- 平台选项（供 UI 筛选器使用） ----
-
-export const PLATFORM_OPTIONS = [
-  'YouTube', 'TikTok', 'Bilibili', 'Instagram',
-  '抖音', '小红书', 'Twitter/X', 'Facebook', '其他',
-] as const
-
 // ---- Store ----
 
-export const useDownloadStore = create<DownloadStore>((set, get) => ({
+export const useDownloadStore = create<TaskStore>((set, get) => ({
   activeTasks: [],
   completedRecords: [],
   failedRecords: [],
   dbLoaded: false,
-  retryUrl: null,
   pendingBatchUrls: [],
-
-  appSettings: (() => {
-    const defaultSettings: AppSettings = {
-      defaultFormat: 'best',
-      downloadPath: '',
-      namingRule: '%(extractor_key)s_%(uploader,creator,channel)s_%(title).50s_%(upload_date>%Y%m%d)s.%(ext)s',
-      enableNotification: true,
-      cookiesPath: '',
-      subtitles: {
-        enabled: false,
-        languages: ['zh', 'zh-Hans', 'zh-CN'],
-        includeAuto: false,
-        embed: false,
-        convertToSrt: true,
-      },
-      whisper: {
-        executablePath: '',
-        modelPath: '',
-        language: 'auto',
-        threads: 4,
-      },
-      subscriptionCheckInterval: '6h',
-      maxConcurrentDownloads: 3,
-      folderOrganize: 'none',
-      proxyType: 'none',
-      douyinCookiesBrowser: 'chrome',
-      proxyHost: '',
-      proxyPort: '',
-      llm: {
-        baseUrl: '',
-        apiKey: '',
-        model: '',
-      },
-      autoAnalyzeHot: false,
-      youtubeApiKey: '',
-    }
-    try {
-      const s = localStorage.getItem('vdownload_settings')
-      if (s) {
-        const saved = JSON.parse(s)
-        return {
-          ...defaultSettings,
-          ...saved,
-          subtitles: { ...defaultSettings.subtitles!, ...(saved.subtitles ?? {}) },
-          whisper: { ...defaultSettings.whisper!, ...(saved.whisper ?? {}) },
-          llm: { ...defaultSettings.llm!, ...(saved.llm ?? {}) },
-        }
-      }
-    } catch {}
-    return defaultSettings
-  })(),
-
-  updateSettings: (newSettings) => set((state) => {
-    const updated = { ...state.appSettings, ...newSettings }
-    localStorage.setItem('vdownload_settings', JSON.stringify(updated))
-    return { appSettings: updated }
-  }),
 
   filterKeyword: '',
   filterPlatform: null,
@@ -409,8 +326,6 @@ export const useDownloadStore = create<DownloadStore>((set, get) => ({
     }))
   },
 
-  setRetryUrl: (url) => set({ retryUrl: url }),
-  clearRetryUrl: () => set({ retryUrl: null }),
   setFilterKeyword: (keyword) => set({ filterKeyword: keyword }),
   setFilterPlatform: (platform) => set({ filterPlatform: platform }),
   setFilterDateRange: (range) => set({ filterDateRange: range }),

@@ -1,12 +1,12 @@
 import React, { useEffect } from 'react'
 import { Card, Form, Select, Button, Input, InputNumber, message } from 'antd'
 import { FolderOpenOutlined, AudioOutlined } from '@ant-design/icons'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/downloadStore'
 
 const WhisperConfig: React.FC = () => {
   const [form] = Form.useForm()
-  const appSettings = useDownloadStore(s => s.appSettings)
-  const updateSettings = useDownloadStore(s => s.updateSettings)
+  const appSettings = useSettingsStore(s => s.appSettings)
+  const updateSettings = useSettingsStore(s => s.updateSettings)
 
   useEffect(() => {
     form.setFieldsValue(appSettings)

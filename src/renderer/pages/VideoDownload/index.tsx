@@ -3,7 +3,7 @@ import { Segmented } from 'antd'
 import SingleDownload from './SingleDownload'
 import SearchDownload from './SearchDownload'
 import VideoListPicker from '../../components/VideoListPicker'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/downloadStore'
 
 type TabKey = 'single' | 'search' | 'playlist'
 
@@ -15,7 +15,7 @@ const TAB_OPTIONS: { label: string; value: TabKey }[] = [
 
 const VideoDownload: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('single')
-  const retryUrl = useDownloadStore((s) => s.retryUrl)
+  const retryUrl = useSettingsStore((s) => s.retryUrl)
 
   // 如果监听到有重新下载的请求，切回“单视频下载”Tab，以便内层的 SingleDownload 接管它
   useEffect(() => {

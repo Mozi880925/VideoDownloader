@@ -12,7 +12,7 @@ import WhisperConfig from './pages/WhisperConfig'
 import Settings from './pages/Settings'
 import Network from './pages/Network'
 import About from './pages/About'
-import { useDownloadStore } from './store/downloadStore'
+import { useDownloadStore, useSettingsStore } from './store/downloadStore'
 
 const pageMap: Record<PageKey, React.ReactNode> = {
   'video-download': <VideoDownload />,
@@ -32,7 +32,7 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<PageKey>('video-download')
   const loadFromDb = useDownloadStore((s) => s.loadFromDb)
   const dbLoaded = useDownloadStore((s) => s.dbLoaded)
-  const retryUrl = useDownloadStore((s) => s.retryUrl)
+  const retryUrl = useSettingsStore((s) => s.retryUrl)
   const pendingBatchUrls = useDownloadStore((s) => s.pendingBatchUrls)
 
   // 全局进度监听（常驻，不随页面切换销毁）
@@ -60,32 +60,32 @@ const App: React.FC = () => {
 
   // 启动时将已保存的 cookies 路径同步到主进程
   useEffect(() => {
-    const { cookiesPath, douyinCookiesBrowser } = useDownloadStore.getState().appSettings
+    const { cookiesPath, douyinCookiesBrowser } = useSettingsStore.getState().appSettings
     window.api.setCookiesPath(cookiesPath || '').catch(() => {})
     window.api.setDouyinBrowser(douyinCookiesBrowser || 'chrome').catch(() => {})
   }, [])
 
   // 启动时把订阅检查间隔推送到主进程
   useEffect(() => {
-    const interval = useDownloadStore.getState().appSettings.subscriptionCheckInterval || '6h'
+    const interval = useSettingsStore.getState().appSettings.subscriptionCheckInterval || '6h'
     window.api.subSetInterval(interval).catch(() => {})
   }, [])
 
   // 启动时把 LLM 配置和爆款自动拆解开关推送到主进程（定时检查的自动拆解在主进程跑）
   useEffect(() => {
-    const { llm, autoAnalyzeHot } = useDownloadStore.getState().appSettings
+    const { llm, autoAnalyzeHot } = useSettingsStore.getState().appSettings
     window.api.llmSetConfig(llm ?? null, !!autoAnalyzeHot).catch(() => {})
   }, [])
 
   // 启动时把 YouTube Data API Key 推送到主进程（订阅检查走官方 API 拿精确播放量）
   useEffect(() => {
-    const { youtubeApiKey } = useDownloadStore.getState().appSettings
+    const { youtubeApiKey } = useSettingsStore.getState().appSettings
     window.api.ytApiSetKey(youtubeApiKey?.trim() || null).catch(() => {})
   }, [])
 
   // 启动时同步代理设置到主进程
   useEffect(() => {
-    const { proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword } = useDownloadStore.getState().appSettings
+    const { proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword } = useSettingsStore.getState().appSettings
     if (proxyType && proxyType !== 'none') {
       window.api.setProxy(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword).catch(() => {})
     }

@@ -39,6 +39,7 @@ import {
 } from '@ant-design/icons'
 import {
   useDownloadStore,
+  useSettingsStore,
   PLATFORM_OPTIONS,
   type ActiveTask,
   type CompletedRecord,
@@ -569,7 +570,7 @@ const FailedRecordCard: React.FC<FailedCardProps> = ({ record, selected, onToggl
             size="small"
             title="重新下载"
             onClick={() => {
-              useDownloadStore.getState().setRetryUrl(record.url)
+              useSettingsStore.getState().setRetryUrl(record.url)
             }}
           />
           <Popconfirm

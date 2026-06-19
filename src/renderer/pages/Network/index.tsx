@@ -8,7 +8,7 @@ import {
   LoadingOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/downloadStore'
 import type { ProxyType, NetworkTestResult, IpInfo } from '../../../shared/types'
 
 // ────────── 代理类型卡片 ──────────
@@ -174,8 +174,8 @@ const EMPTY_RESULTS: NetworkTestResult[] = [
 // ────────── 主页面 ──────────
 
 const Network: React.FC = () => {
-  const appSettings = useDownloadStore(s => s.appSettings)
-  const updateSettings = useDownloadStore(s => s.updateSettings)
+  const appSettings = useSettingsStore(s => s.appSettings)
+  const updateSettings = useSettingsStore(s => s.updateSettings)
 
   const [proxyType, setProxyTypeLocal] = useState<ProxyType>(appSettings.proxyType ?? 'none')
   const [proxyHost, setProxyHost] = useState(appSettings.proxyHost ?? '')
