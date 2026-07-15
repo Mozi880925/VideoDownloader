@@ -2,6 +2,7 @@
 cookies.txt
 youtube-cookies.txt
 *.db
+*.db.backup*
 *.db-shm
 *.db-wal
 *.sqlite
