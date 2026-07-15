@@ -325,29 +325,27 @@ export interface TopicIdea {
   updated_at: number
 }
 
-// ────────── 下载记录（DB 行，跨 IPC 传输）──────────
+// ────────── 下载记录（domain 类型，跨 IPC 传输；snake_case 行映射在主进程 db 层完成）──────────
 
-export interface CompletedRecordRow {
-  id: string
+export interface CompletedRecord {
+  taskId: string
+  url: string
   title: string
   thumbnail: string
   platform: string
-  url: string
   filepath: string
-  completed_at: number
-  status: string
-  tags: string        // 逗号分隔的标签字符串
+  completedAt: number
+  tags: string[]
 }
 
-export interface FailedRecordRow {
-  id: string
+export interface FailedRecord {
+  taskId: string
+  url: string
   title: string
   thumbnail: string
   platform: string
-  url: string
-  error_message: string
-  failed_at: number
-  status: string
+  errorMessage: string
+  failedAt: number
 }
 
 export type TaskStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'cookie_error'

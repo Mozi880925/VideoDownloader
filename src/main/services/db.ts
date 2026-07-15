@@ -1,11 +1,34 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import { app } from 'electron'
-import type { CompletedRecordRow, FailedRecordRow } from '../../shared/types'
+import type { CompletedRecord, FailedRecord } from '../../shared/types'
+import { logInfo, logError } from './logger'
 
 // ---- 类型 ----
+// 下载记录的 snake_case 行类型仅在本文件内部使用，对外一律返回 domain 类型
 
-export type { CompletedRecordRow, FailedRecordRow }
+interface CompletedRecordRow {
+  id: string
+  title: string
+  thumbnail: string
+  platform: string
+  url: string
+  filepath: string
+  completed_at: number
+  status: string
+  tags: string        // 逗号分隔的标签字符串
+}
+
+interface FailedRecordRow {
+  id: string
+  title: string
+  thumbnail: string
+  platform: string
+  url: string
+  error_message: string
+  failed_at: number
+  status: string
+}
 
 export interface ChannelSubscriptionRow {
   id: string
@@ -67,15 +90,42 @@ function getDbPath(): string {
   return path.join(app.getPath('userData'), 'data.db')
 }
 
+// ---- 编号迁移（PRAGMA user_version）----
+// 规则：此后所有 schema 变更一律新增编号迁移，不再往 baseline 里补 IF NOT EXISTS 补丁。
+// v1 baseline 必须幂等：兼容「旧库表已存在但 user_version=0」与「全新空库」两种起点。
+
+const MIGRATIONS: Array<{ v: number; name: string; up: (db: Database.Database) => void }> = [
+  { v: 1, name: 'baseline-schema', up: baselineSchema },
+  { v: 2, name: 'cleanup-channel-tab-pseudo-videos', up: cleanupTabPseudoVideos },
+]
+
+function migrate(db: Database.Database): void {
+  const cur = db.pragma('user_version', { simple: true }) as number
+  for (const m of MIGRATIONS) {
+    if (m.v <= cur) continue
+    db.transaction(() => {
+      m.up(db)
+      db.pragma(`user_version = ${m.v}`)
+    })()
+    logInfo(`[db] migrated to v${m.v} (${m.name})`)
+  }
+}
+
 export function initDb(): void {
   const dbPath = getDbPath()
-  console.log('[db] opening database at:', dbPath)
+  logInfo(`[db] opening database at: ${dbPath}`)
   db = new Database(dbPath)
 
   // WAL 模式提升并发读写性能
   db.pragma('journal_mode = WAL')
 
-  // 建表
+  migrate(db)
+
+  logInfo('[db] database initialized')
+}
+
+/** v1：全部建表（写全当前终态列）+ 旧库补列守卫 */
+function baselineSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS completed_records (
       id TEXT PRIMARY KEY,
@@ -117,6 +167,7 @@ export function initDb(): void {
       thumbnail TEXT NOT NULL DEFAULT '',
       upload_date TEXT NOT NULL DEFAULT '',
       duration INTEGER NOT NULL DEFAULT 0,
+      view_count INTEGER NOT NULL DEFAULT 0,
       discovered_at INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'new',
       PRIMARY KEY (id, channel_id)
@@ -163,50 +214,36 @@ export function initDb(): void {
     CREATE INDEX IF NOT EXISTS idx_snapshots_video ON view_snapshots(channel_id, video_id, captured_at);
   `)
 
-  // Migration: 为已存在的旧表补充 tags 列
-  const existingCols = db
-    .prepare(`PRAGMA table_info(completed_records)`)
-    .all() as Array<{ name: string }>
-  if (!existingCols.some((c) => c.name === 'tags')) {
+  // 旧库补列守卫（表已存在但缺新列的库；全新库上面的 CREATE 已写全终态列，这里全部跳过）
+  const hasColumn = (table: string, col: string): boolean =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some((c) => c.name === col)
+
+  if (!hasColumn('completed_records', 'tags')) {
     db.exec(`ALTER TABLE completed_records ADD COLUMN tags TEXT NOT NULL DEFAULT ''`)
-    console.log('[db] migration: added `tags` column to completed_records')
   }
-
-  // Migration: 为已存在的旧订阅表补充 group_name / pinned 列
-  const subCols = db
-    .prepare(`PRAGMA table_info(channel_subscriptions)`)
-    .all() as Array<{ name: string }>
-  if (!subCols.some((c) => c.name === 'group_name')) {
+  if (!hasColumn('channel_subscriptions', 'group_name')) {
     db.exec(`ALTER TABLE channel_subscriptions ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`)
-    console.log('[db] migration: added `group_name` column to channel_subscriptions')
   }
-  if (!subCols.some((c) => c.name === 'pinned')) {
+  if (!hasColumn('channel_subscriptions', 'pinned')) {
     db.exec(`ALTER TABLE channel_subscriptions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`)
-    console.log('[db] migration: added `pinned` column to channel_subscriptions')
   }
-
-  // Migration: 为 channel_new_videos 补充 view_count 列
-  const vidCols = db
-    .prepare(`PRAGMA table_info(channel_new_videos)`)
-    .all() as Array<{ name: string }>
-  if (!vidCols.some((c) => c.name === 'view_count')) {
+  if (!hasColumn('channel_new_videos', 'view_count')) {
     db.exec(`ALTER TABLE channel_new_videos ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0`)
-    console.log('[db] migration: added `view_count` column to channel_new_videos')
   }
+}
 
-  // Cleanup: 订阅频道根 URL 时曾把页签播放列表（"xxx - Videos/Shorts"）误存为视频，清掉这类假条目
-  const tabCleanup = db
+/** v2：订阅频道根 URL 时曾把页签播放列表（"xxx - Videos/Shorts"）误存为视频，一次性清掉这类假条目 */
+function cleanupTabPseudoVideos(db: Database.Database): void {
+  const result = db
     .prepare(`DELETE FROM channel_new_videos
               WHERE url LIKE '%youtube.com/%/videos'
                  OR url LIKE '%youtube.com/%/shorts'
                  OR url LIKE '%youtube.com/%/streams'
                  OR url LIKE '%youtube.com/%/playlists'`)
     .run()
-  if (tabCleanup.changes > 0) {
-    console.log(`[db] cleanup: removed ${tabCleanup.changes} channel-tab pseudo-video rows`)
+  if (result.changes > 0) {
+    logInfo(`[db] cleanup: removed ${result.changes} channel-tab pseudo-video rows`)
   }
-
-  console.log('[db] database initialized')
 }
 
 function ensureDb(): Database.Database {
@@ -214,95 +251,132 @@ function ensureDb(): Database.Database {
   return db
 }
 
-// ---- CRUD ----
+// ---- 下载记录 CRUD（对外 domain 类型，snake_case 行映射在此完成）----
 
-export function insertCompletedRecord(record: CompletedRecordRow): void {
+function rowToCompletedRecord(r: CompletedRecordRow): CompletedRecord {
+  return {
+    taskId: r.id,
+    url: r.url,
+    title: r.title,
+    thumbnail: r.thumbnail,
+    platform: r.platform,
+    filepath: r.filepath,
+    completedAt: r.completed_at,
+    tags: r.tags ? r.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+  }
+}
+
+function rowToFailedRecord(r: FailedRecordRow): FailedRecord {
+  return {
+    taskId: r.id,
+    url: r.url,
+    title: r.title,
+    thumbnail: r.thumbnail,
+    platform: r.platform,
+    errorMessage: r.error_message,
+    failedAt: r.failed_at,
+  }
+}
+
+export function insertCompletedRecord(record: CompletedRecord): void {
   const stmt = ensureDb().prepare(`
     INSERT OR REPLACE INTO completed_records (id, title, thumbnail, platform, url, filepath, completed_at, status, tags)
     VALUES (@id, @title, @thumbnail, @platform, @url, @filepath, @completed_at, @status, @tags)
   `)
-  stmt.run({ ...record, tags: record.tags ?? '' })
-  console.log('[db] inserted completed record:', record.id, record.title)
+  stmt.run({
+    id: record.taskId,
+    title: record.title,
+    thumbnail: record.thumbnail,
+    platform: record.platform,
+    url: record.url,
+    filepath: record.filepath,
+    completed_at: record.completedAt,
+    status: 'completed',
+    tags: (record.tags ?? []).join(','),
+  })
+  logInfo(`[db] inserted completed record: ${record.taskId} ${record.title}`)
 }
 
-export function updateCompletedRecordTags(id: string, tags: string): void {
-  ensureDb().prepare('UPDATE completed_records SET tags = ? WHERE id = ?').run(tags, id)
-  console.log('[db] updated tags for record:', id, '→', tags)
+export function updateCompletedRecordTags(id: string, tags: string[]): void {
+  ensureDb().prepare('UPDATE completed_records SET tags = ? WHERE id = ?').run(tags.join(','), id)
+  logInfo(`[db] updated tags for record: ${id} → ${tags.join(',')}`)
 }
 
-export function getAllCompletedRecords(): CompletedRecordRow[] {
+export function getAllCompletedRecords(): CompletedRecord[] {
   const rows = ensureDb().prepare(
     'SELECT * FROM completed_records ORDER BY completed_at DESC'
   ).all() as CompletedRecordRow[]
-  console.log('[db] loaded', rows.length, 'completed records')
-  return rows
+  logInfo(`[db] loaded ${rows.length} completed records`)
+  return rows.map(rowToCompletedRecord)
 }
 
 export function deleteCompletedRecord(id: string): void {
   ensureDb().prepare('DELETE FROM completed_records WHERE id = ?').run(id)
-  console.log('[db] deleted completed record:', id)
+  logInfo(`[db] deleted completed record: ${id}`)
 }
 
 // ---- Failed records CRUD ----
 
-export function insertFailedRecord(record: FailedRecordRow): void {
+export function insertFailedRecord(record: FailedRecord): void {
   const stmt = ensureDb().prepare(`
     INSERT OR REPLACE INTO failed_records (id, title, thumbnail, platform, url, error_message, failed_at, status)
     VALUES (@id, @title, @thumbnail, @platform, @url, @error_message, @failed_at, @status)
   `)
-  stmt.run(record)
-  console.log('[db] inserted failed record:', record.id, record.title)
+  stmt.run({
+    id: record.taskId,
+    title: record.title,
+    thumbnail: record.thumbnail,
+    platform: record.platform,
+    url: record.url,
+    error_message: record.errorMessage,
+    failed_at: record.failedAt,
+    status: 'failed',
+  })
+  logInfo(`[db] inserted failed record: ${record.taskId} ${record.title}`)
 }
 
-export function getAllFailedRecords(): FailedRecordRow[] {
+export function getAllFailedRecords(): FailedRecord[] {
   const rows = ensureDb().prepare(
     'SELECT * FROM failed_records ORDER BY failed_at DESC'
   ).all() as FailedRecordRow[]
-  console.log('[db] loaded', rows.length, 'failed records')
-  return rows
+  logInfo(`[db] loaded ${rows.length} failed records`)
+  return rows.map(rowToFailedRecord)
 }
 
 export function deleteFailedRecord(id: string): void {
   ensureDb().prepare('DELETE FROM failed_records WHERE id = ?').run(id)
-  console.log('[db] deleted failed record:', id)
+  logInfo(`[db] deleted failed record: ${id}`)
 }
 
 export function clearAllCompletedRecords(): number {
   const result = ensureDb().prepare('DELETE FROM completed_records').run()
-  console.log('[db] cleared all completed records, count:', result.changes)
+  logInfo(`[db] cleared all completed records, count: ${result.changes}`)
   return result.changes
 }
 
 export function clearAllFailedRecords(): number {
   const result = ensureDb().prepare('DELETE FROM failed_records').run()
-  console.log('[db] cleared all failed records, count:', result.changes)
+  logInfo(`[db] cleared all failed records, count: ${result.changes}`)
   return result.changes
 }
 
 // ---- 频道订阅 CRUD ----
 
+/** 订阅查询公共片段（含派生 new_count），list/get 共用 */
+const SUB_SELECT = `SELECT s.id, s.name, s.url, s.last_checked_at, s.last_seen_ids, s.enabled, s.created_at,
+       s.group_name, s.pinned,
+       (SELECT COUNT(*) FROM channel_new_videos v WHERE v.channel_id = s.id AND v.status = 'new') AS new_count
+FROM channel_subscriptions s`
+
 export function listSubscriptions(): ChannelSubscriptionRow[] {
-  const rows = ensureDb()
-    .prepare(
-      `SELECT s.id, s.name, s.url, s.last_checked_at, s.last_seen_ids, s.enabled, s.created_at,
-              s.group_name, s.pinned,
-              (SELECT COUNT(*) FROM channel_new_videos v WHERE v.channel_id = s.id AND v.status = 'new') AS new_count
-       FROM channel_subscriptions s
-       ORDER BY s.pinned DESC, s.group_name COLLATE NOCASE ASC, s.created_at DESC`,
-    )
+  return ensureDb()
+    .prepare(`${SUB_SELECT} ORDER BY s.pinned DESC, s.group_name COLLATE NOCASE ASC, s.created_at DESC`)
     .all() as ChannelSubscriptionRow[]
-  return rows
 }
 
 export function getSubscription(id: string): ChannelSubscriptionRow | null {
   const row = ensureDb()
-    .prepare(
-      `SELECT s.id, s.name, s.url, s.last_checked_at, s.last_seen_ids, s.enabled, s.created_at,
-              s.group_name, s.pinned,
-              (SELECT COUNT(*) FROM channel_new_videos v WHERE v.channel_id = s.id AND v.status = 'new') AS new_count
-       FROM channel_subscriptions s
-       WHERE s.id = ?`,
-    )
+    .prepare(`${SUB_SELECT} WHERE s.id = ?`)
     .get(id) as ChannelSubscriptionRow | undefined
   return row ?? null
 }
@@ -315,7 +389,7 @@ export function insertSubscription(row: Omit<ChannelSubscriptionRow, 'new_count'
        VALUES (@id, @name, @url, @last_checked_at, @last_seen_ids, @enabled, @created_at, @group_name, @pinned)`,
     )
     .run(row)
-  console.log('[db] inserted subscription:', row.id, row.name, row.url)
+  logInfo(`[db] inserted subscription: ${row.id} ${row.name} ${row.url}`)
 }
 
 export function updateSubscriptionGroup(id: string, groupName: string): void {
@@ -351,7 +425,7 @@ export function deleteSubscription(id: string): void {
     db.prepare('DELETE FROM video_analyses WHERE channel_id = ?').run(id)
     db.prepare('DELETE FROM view_snapshots WHERE channel_id = ?').run(id)
   })()
-  console.log('[db] deleted subscription:', id)
+  logInfo(`[db] deleted subscription: ${id}`)
 }
 
 // ---- 视频 AI 拆解记录 ----
@@ -514,7 +588,7 @@ export function closeDb(): void {
   if (db) {
     db.close()
     db = null
-    console.log('[db] database closed')
+    logInfo('[db] database closed')
   }
 }
 

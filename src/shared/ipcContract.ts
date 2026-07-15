@@ -33,8 +33,8 @@ import type {
   VideoTranscript,
   VideoGrowthStat,
   TopicIdea,
-  CompletedRecordRow,
-  FailedRecordRow,
+  CompletedRecord,
+  FailedRecord,
   AppSettings,
 } from './types'
 
@@ -77,12 +77,12 @@ export interface IpcInvokeContract {
   'fs:select-file': { args: [filters?: { name: string; extensions: string[] }[]]; result: string | undefined }
 
   // ---- 下载记录（DB）----
-  'db:get-completed-records': { args: []; result: CompletedRecordRow[] }
-  'db:insert-completed-record': { args: [record: CompletedRecordRow]; result: void }
+  'db:get-completed-records': { args: []; result: CompletedRecord[] }
+  'db:insert-completed-record': { args: [record: CompletedRecord]; result: void }
   'db:delete-completed-record': { args: [id: string]; result: void }
-  'db:update-completed-record-tags': { args: [id: string, tags: string]; result: void }
-  'db:get-failed-records': { args: []; result: FailedRecordRow[] }
-  'db:insert-failed-record': { args: [record: FailedRecordRow]; result: void }
+  'db:update-completed-record-tags': { args: [id: string, tags: string[]]; result: void }
+  'db:get-failed-records': { args: []; result: FailedRecord[] }
+  'db:insert-failed-record': { args: [record: FailedRecord]; result: void }
   'db:delete-failed-record': { args: [id: string]; result: void }
   'db:clear-all-completed': { args: []; result: number }
   'db:clear-all-failed': { args: []; result: number }

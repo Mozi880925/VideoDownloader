@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { friendlyError } from '../../shared/errorTranslator'
+import type { CompletedRecord, FailedRecord } from '../../shared/types'
 
 // ---- 从同一目录的拆分 store 和 utils 重导出，保持向后兼容 ----
 
@@ -48,26 +49,8 @@ export interface ActiveTask {
   startedAt: number
 }
 
-export interface CompletedRecord {
-  taskId: string
-  url: string
-  title: string
-  thumbnail: string
-  platform: string
-  filepath: string
-  completedAt: number
-  tags: string[]
-}
-
-export interface FailedRecord {
-  taskId: string
-  url: string
-  title: string
-  thumbnail: string
-  platform: string
-  errorMessage: string
-  failedAt: number
-}
+// domain 类型已上移到 shared/types.ts（主进程 db 层直接返回 domain 形状），此处重导出兼容既有引用
+export type { CompletedRecord, FailedRecord } from '../../shared/types'
 
 interface TaskStore {
   activeTasks: ActiveTask[]
@@ -143,29 +126,11 @@ export const useDownloadStore = create<TaskStore>((set, get) => ({
 
   loadFromDb: async () => {
     try {
-      const [completedRows, failedRows] = await Promise.all([
+      // 主进程 db 层直接返回 domain 类型，无需再做行映射
+      const [completedRecords, failedRecords] = await Promise.all([
         window.api.dbGetCompletedRecords(),
         window.api.dbGetFailedRecords(),
       ])
-      const completedRecords: CompletedRecord[] = completedRows.map((r) => ({
-        taskId: r.id,
-        url: r.url,
-        title: r.title,
-        thumbnail: r.thumbnail,
-        platform: r.platform,
-        filepath: r.filepath,
-        completedAt: r.completed_at,
-        tags: r.tags ? r.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
-      }))
-      const failedRecords: FailedRecord[] = failedRows.map((r) => ({
-        taskId: r.id,
-        url: r.url,
-        title: r.title,
-        thumbnail: r.thumbnail,
-        platform: r.platform,
-        errorMessage: r.error_message,
-        failedAt: r.failed_at,
-      }))
       set({ completedRecords, failedRecords, dbLoaded: true })
       console.log('[store] loaded', completedRecords.length, 'completed +', failedRecords.length, 'failed records from db')
     } catch (err) {
@@ -227,17 +192,7 @@ export const useDownloadStore = create<TaskStore>((set, get) => ({
       completedRecords: [record, ...s.completedRecords],
     }))
     // 持久化到 DB；失败时回滚
-    window.api.dbInsertCompletedRecord({
-      id: task.taskId,
-      title: task.title,
-      thumbnail: task.thumbnail,
-      platform: task.platform,
-      url: task.url,
-      filepath,
-      completed_at: completedAt,
-      status: 'completed',
-      tags: '',
-    }).catch((err: unknown) => {
+    window.api.dbInsertCompletedRecord(record).catch((err: unknown) => {
       console.error('[store] db insert completed failed, rolling back:', err)
       set((s) => ({
         completedRecords: s.completedRecords.filter((r) => r.taskId !== taskId),
@@ -252,33 +207,23 @@ export const useDownloadStore = create<TaskStore>((set, get) => ({
       const failedAt = Date.now()
       
       const errorMessage = friendlyError(rawErrorMessage)
-
-      // 持久化到数据库
-      window.api.dbInsertFailedRecord({
-        id: task.taskId,
+      const record: FailedRecord = {
+        taskId: task.taskId,
+        url: task.url,
         title: task.title,
         thumbnail: task.thumbnail,
         platform: task.platform,
-        url: task.url,
-        error_message: errorMessage,
-        failed_at: failedAt,
-        status: 'failed',
-      }).catch((err: unknown) => console.error('[store] db insert failed record failed:', err))
+        errorMessage,
+        failedAt,
+      }
+
+      // 持久化到数据库
+      window.api.dbInsertFailedRecord(record)
+        .catch((err: unknown) => console.error('[store] db insert failed record failed:', err))
 
       return {
         activeTasks: state.activeTasks.filter((t) => t.taskId !== taskId),
-        failedRecords: [
-          {
-            taskId: task.taskId,
-            url: task.url,
-            title: task.title,
-            thumbnail: task.thumbnail,
-            platform: task.platform,
-            errorMessage,
-            failedAt,
-          },
-          ...state.failedRecords,
-        ],
+        failedRecords: [record, ...state.failedRecords],
       }
     }),
 
@@ -317,7 +262,7 @@ export const useDownloadStore = create<TaskStore>((set, get) => ({
 
   updateRecordTags: (taskId, tags) => {
     const cleaned = Array.from(new Set(tags.map((t) => t.trim()).filter(Boolean)))
-    window.api.dbUpdateCompletedRecordTags(taskId, cleaned.join(','))
+    window.api.dbUpdateCompletedRecordTags(taskId, cleaned)
       .catch((err: unknown) => console.error('[store] db update tags failed:', err))
     set((state) => ({
       completedRecords: state.completedRecords.map((r) =>
