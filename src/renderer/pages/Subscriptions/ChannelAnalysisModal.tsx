@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import type { ChannelSubscription, ChannelAnalysisResult } from '@shared/types'
 import { Button, Modal, Spin, Tag, Tooltip, message } from 'antd'
 import { BarChartOutlined, CopyOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 

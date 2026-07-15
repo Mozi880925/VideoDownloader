@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import type { ChannelSubscription, NewVideoItem, TitleAnalysisResult, ChannelAnalysisResult, VideoTranscript } from '@shared/types'
 import { AutoComplete, Button, Input, Modal, Select, Space, message } from 'antd'
 import { ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import { useDownloadStore, useSettingsStore } from '../../store/downloadStore'

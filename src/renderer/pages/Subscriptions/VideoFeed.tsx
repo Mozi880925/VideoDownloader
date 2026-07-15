@@ -1,4 +1,5 @@
 import React from 'react'
+import type { ChannelSubscription, NewVideoItem } from '@shared/types'
 import { Button, Empty, Segmented, Select, Space, Spin, Tag, Tooltip } from 'antd'
 import {
   AppstoreOutlined,

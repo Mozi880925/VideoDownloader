@@ -1,6 +1,6 @@
-import { ipcMain, BrowserWindow } from 'electron'
 import { parseVideo, downloadVideo, cancelDownload, searchVideos, updateYtdlp } from '../services/ytdlp'
-import type { DownloadOptions, VideoInfo, SearchResult, TaskResult } from '../../shared/types'
+import type { TaskResult } from '../../shared/types'
+import { handle, sendTo } from './typed'
 
 // 将 Error.message 分类为 TaskStatus
 function classifyError(msg: string): TaskResult<never>['status'] {
@@ -11,7 +11,7 @@ function classifyError(msg: string): TaskResult<never>['status'] {
 
 export function registerDownloadHandlers(): void {
   // 解析视频信息 — 始终 resolve TaskResult，不再 reject
-  ipcMain.handle('parse-video', async (_event, url: string, proxy?: string, taskId?: string): Promise<TaskResult<VideoInfo>> => {
+  handle('ytdlp:parse-video', async (_event, url, proxy, taskId) => {
     try {
       const info = await parseVideo(url, proxy, taskId)
       return { taskId: taskId ?? '', status: 'success', data: info }
@@ -22,7 +22,7 @@ export function registerDownloadHandlers(): void {
   })
 
   // 搜索视频 — 始终 resolve TaskResult
-  ipcMain.handle('search-videos', async (_event, keyword: string, limit?: number, proxy?: string): Promise<TaskResult<SearchResult[]>> => {
+  handle('ytdlp:search-videos', async (_event, keyword, limit, proxy) => {
     try {
       const results = await searchVideos(keyword, limit, proxy)
       return { taskId: '', status: 'success', data: results }
@@ -33,13 +33,12 @@ export function registerDownloadHandlers(): void {
   })
 
   // 开始下载 — 始终 resolve TaskResult，不再 reject
-  ipcMain.handle('download-video', async (event, options: DownloadOptions): Promise<TaskResult<string>> => {
+  handle('ytdlp:download-video', async (event, options) => {
     return new Promise<TaskResult<string>>((resolve) => {
       downloadVideo(
         options,
         (progress) => {
-          const win = BrowserWindow.fromWebContents(event.sender)
-          win?.webContents.send('download-progress', progress)
+          sendTo(event.sender, 'event:download-progress', progress)
         },
         (err, filepath) => {
           if (err) {
@@ -53,13 +52,13 @@ export function registerDownloadHandlers(): void {
     })
   })
 
-  // 取消下载（不涉及结果结构，保持原样）
-  ipcMain.handle('cancel-download', async (_event, taskId: string) => {
+  // 取消下载
+  handle('ytdlp:cancel-download', async (_event, taskId) => {
     return cancelDownload(taskId)
   })
 
   // 更新 yt-dlp
-  ipcMain.handle('ytdlp:update', async (): Promise<{ success: boolean; output: string }> => {
+  handle('ytdlp:update', async () => {
     return updateYtdlp()
   })
 }

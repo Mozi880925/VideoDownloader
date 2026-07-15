@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import type { NewVideoItem, TitleAnalysisResult } from '@shared/types'
 import { Button, Modal, Spin, Tag, Tooltip, message } from 'antd'
 import { CopyOutlined, PlusOutlined, ReloadOutlined, RobotOutlined } from '@ant-design/icons'
 

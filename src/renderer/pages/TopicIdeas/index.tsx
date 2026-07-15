@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import type { TopicIdea, TopicStatus } from '@shared/types'
 import {
   Card, Button, Input, Tag, Space, Empty, Popconfirm,
   Modal, Select, Tooltip, message, Badge,

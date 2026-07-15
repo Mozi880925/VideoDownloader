@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import type { TranscribeProgress } from '@shared/types'
 import { Modal, Button, Space, Progress, Alert, Checkbox, Typography } from 'antd'
 import { AudioOutlined, FolderOpenOutlined, FileTextOutlined } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/downloadStore'

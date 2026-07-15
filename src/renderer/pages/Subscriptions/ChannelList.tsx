@@ -1,4 +1,5 @@
 import React from 'react'
+import type { ChannelSubscription } from '@shared/types'
 import { Badge, Button, Dropdown, Empty, Tooltip } from 'antd'
 import type { MenuProps } from 'antd'
 import {

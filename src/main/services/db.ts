@@ -1,31 +1,11 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import { app } from 'electron'
+import type { CompletedRecordRow, FailedRecordRow } from '../../shared/types'
 
 // ---- 类型 ----
 
-export interface CompletedRecordRow {
-  id: string
-  title: string
-  thumbnail: string
-  platform: string
-  url: string
-  filepath: string
-  completed_at: number
-  status: string
-  tags: string        // 逗号分隔的标签字符串
-}
-
-export interface FailedRecordRow {
-  id: string
-  title: string
-  thumbnail: string
-  platform: string
-  url: string
-  error_message: string
-  failed_at: number
-  status: string
-}
+export type { CompletedRecordRow, FailedRecordRow }
 
 export interface ChannelSubscriptionRow {
   id: string

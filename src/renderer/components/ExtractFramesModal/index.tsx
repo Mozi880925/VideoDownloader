@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import type { FrameMode, FrameExtractResult } from '@shared/types'
 import {
   Modal,
   Radio,

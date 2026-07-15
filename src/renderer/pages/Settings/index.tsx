@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import type { LlmConfig } from '@shared/types'
 import { Card, Form, Select, Switch, Button, message, Input, InputNumber, Tag, Spin, Segmented, Divider } from 'antd'
 import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined, RobotOutlined, ApiOutlined } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/downloadStore'

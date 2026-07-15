@@ -309,6 +309,47 @@ export interface NewVideoItem {
   status: 'new' | 'dismissed' | 'seen'
 }
 
+// ────────── 选题灵感库 ──────────
+
+export type TopicStatus = 'pending' | 'planned' | 'filming' | 'published'
+
+export interface TopicIdea {
+  id: string
+  title: string
+  notes: string
+  ref_url: string
+  ref_title: string
+  ref_thumbnail: string
+  status: TopicStatus
+  created_at: number
+  updated_at: number
+}
+
+// ────────── 下载记录（DB 行，跨 IPC 传输）──────────
+
+export interface CompletedRecordRow {
+  id: string
+  title: string
+  thumbnail: string
+  platform: string
+  url: string
+  filepath: string
+  completed_at: number
+  status: string
+  tags: string        // 逗号分隔的标签字符串
+}
+
+export interface FailedRecordRow {
+  id: string
+  title: string
+  thumbnail: string
+  platform: string
+  url: string
+  error_message: string
+  failed_at: number
+  status: string
+}
+
 export type TaskStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'cookie_error'
 
 export interface TaskResult<T = unknown> {

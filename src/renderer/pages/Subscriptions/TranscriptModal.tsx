@@ -1,4 +1,5 @@
 import React from 'react'
+import type { NewVideoItem, VideoTranscript } from '@shared/types'
 import { Button, Modal, Spin, Tag, message } from 'antd'
 import { CopyOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons'
 

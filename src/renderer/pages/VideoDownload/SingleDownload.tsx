@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import type { VideoInfo, VideoFormat, DownloadProgress } from '@shared/types'
 import {
   Input,
   Button,

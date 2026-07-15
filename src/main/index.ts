@@ -73,6 +73,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // preload 需要 require 编译后的 shared/ipcContract（IPC 契约单一来源），
+      // Electron 20+ 默认 sandbox 下 preload 无法 require 相对模块，故关闭。
+      // 主窗口只加载本地内容（dev: localhost / prod: 本地文件），风险可控。
+      sandbox: false,
     },
     frame: false,
     show: false,
@@ -98,10 +102,10 @@ app.whenReady().then(async () => {
   registerDownloadHandlers()
 
   // detect-ytdlp handler
-  ipcMain.handle('detect-ytdlp', () => detectYtdlp())
+  ipcMain.handle('ytdlp:detect', () => detectYtdlp())
 
   // 取消解析
-  ipcMain.handle('cancel-parse', (_event, taskId: string) => cancelParse(taskId))
+  ipcMain.handle('ytdlp:cancel-parse', (_event, taskId: string) => cancelParse(taskId))
 
   // 拉取频道/播放列表的视频列表
   ipcMain.handle('ytdlp:fetch-video-list', async (_event, url: string, limit?: number, proxy?: string) => {
@@ -115,15 +119,15 @@ app.whenReady().then(async () => {
   })
 
   // 获取系统下载目录
-  ipcMain.handle('get-downloads-path', () => app.getPath('downloads'))
+  ipcMain.handle('app:get-downloads-path', () => app.getPath('downloads'))
 
   // 在系统文件管理器中显示文件
-  ipcMain.handle('show-item-in-folder', (_event, filepath: string) => {
+  ipcMain.handle('fs:show-item-in-folder', (_event, filepath: string) => {
     shell.showItemInFolder(filepath)
   })
 
   // 用系统默认程序打开文件
-  ipcMain.handle('open-file', async (_event, filepath: string) => {
+  ipcMain.handle('fs:open-file', async (_event, filepath: string) => {
     const result = await shell.openPath(filepath)
     if (result) console.warn('[shell] openPath error:', result)
     return result
@@ -359,7 +363,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('topic:delete', (_e, id: string) => deleteTopicIdea(id))
 
   // ---- Wrap-up Features ----
-  ipcMain.handle('select-directory', async (event, defaultPath?: string) => {
+  ipcMain.handle('fs:select-directory', async (event, defaultPath?: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return undefined
     const result = await dialog.showOpenDialog(win, {
@@ -372,7 +376,7 @@ app.whenReady().then(async () => {
     return undefined
   })
 
-  ipcMain.handle('select-file', async (event, filters?: Electron.FileFilter[]) => {
+  ipcMain.handle('fs:select-file', async (event, filters?: Electron.FileFilter[]) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return undefined
     const result = await dialog.showOpenDialog(win, {
@@ -385,20 +389,20 @@ app.whenReady().then(async () => {
     return undefined
   })
 
-  ipcMain.handle('set-cookies-path', (_event, filePath: string) => {
+  ipcMain.handle('cookies:set-path', (_event, filePath: string) => {
     setCookiesPath(filePath)
   })
 
-  ipcMain.handle('set-douyin-browser', (_event, browser: string) => {
+  ipcMain.handle('cookies:set-douyin-browser', (_event, browser: string) => {
     setDouyinCookiesBrowser(browser)
   })
 
-  ipcMain.handle('set-domestic-cookies-path', (_event, filePath: string) => {
+  ipcMain.handle('cookies:set-domestic-path', (_event, filePath: string) => {
     setDomesticCookiesPath(filePath)
   })
 
   // ---- 代理设置 ----
-  ipcMain.handle('set-proxy', async (_event, type: ProxyType, host?: string, port?: string, username?: string, password?: string) => {
+  ipcMain.handle('net:set-proxy', async (_event, type: ProxyType, host?: string, port?: string, username?: string, password?: string) => {
     try {
       const proxyUrl = buildProxyUrl(type, host, port, username, password)
       setProxyUrl(proxyUrl)
@@ -410,7 +414,7 @@ app.whenReady().then(async () => {
   })
 
   // ---- 网络连通性测试 ----
-  ipcMain.handle('test-network', async () => {
+  ipcMain.handle('net:test', async () => {
     try {
       return await testAllSites()
     } catch (err) {
@@ -420,7 +424,7 @@ app.whenReady().then(async () => {
   })
 
   // ---- IP 信息 ----
-  ipcMain.handle('get-ip-info', async () => {
+  ipcMain.handle('net:ip-info', async () => {
     try {
       return await getIpInfo()
     } catch (err) {
@@ -430,7 +434,7 @@ app.whenReady().then(async () => {
   })
 
   // ---- 字幕提取 ----
-  ipcMain.handle('extract-subtitles', async (_event, url: string, outputDir: string, langs?: string) => {
+  ipcMain.handle('ytdlp:extract-subtitles', async (_event, url: string, outputDir: string, langs?: string) => {
     try {
       return await extractSubtitles(url, outputDir, langs)
     } catch (err) {
@@ -442,7 +446,7 @@ app.whenReady().then(async () => {
   // ---- YouTube 应用内登录 ----
   let loginWindow: BrowserWindow | null = null
 
-  ipcMain.handle('open-login-window', (event) => {
+  ipcMain.handle('cookies:open-login-window', (event) => {
     // 已经打开则聚焦，不重复创建
     if (loginWindow && !loginWindow.isDestroyed()) {
       loginWindow.focus()
@@ -506,7 +510,7 @@ app.whenReady().then(async () => {
         // 同步到主进程 ytdlp 缓存 + 通知渲染进程更新 settings
         setCookiesPath(cookiesFilePath)
         if (!event.sender.isDestroyed()) {
-          event.sender.send('cookies-path-updated', cookiesFilePath)
+          event.sender.send('event:cookies-path-updated', cookiesFilePath)
         }
 
         console.log(`[login] exported ${targetCookies.length} cookies → ${cookiesFilePath}`)
@@ -516,13 +520,13 @@ app.whenReady().then(async () => {
     })
   })
 
-  ipcMain.handle('show-notification', (_event, title: string, body: string) => {
+  ipcMain.handle('app:show-notification', (_event, title: string, body: string) => {
     if (Notification.isSupported()) {
       new Notification({ title, body }).show()
     }
   })
 
-  ipcMain.handle('open-logs-folder', () => {
+  ipcMain.handle('app:open-logs-folder', () => {
     const logDir = path.join(app.getPath('userData'), 'logs')
     shell.openPath(logDir)
   })
@@ -548,7 +552,7 @@ app.whenReady().then(async () => {
     try {
       const result = await transcribeVideo(options, (p) => {
         const win = BrowserWindow.fromWebContents(event.sender)
-        win?.webContents.send('transcribe-progress', p)
+        win?.webContents.send('event:transcribe-progress', p)
       })
       return { taskId: options.taskId, status: 'success', data: result }
     } catch (err) {
@@ -568,7 +572,7 @@ app.whenReady().then(async () => {
   setAutoAnalysisNotifier((info) => {
     const win = BrowserWindow.getAllWindows()[0]
     if (win && !win.webContents.isDestroyed()) {
-      win.webContents.send('analysis:auto-done', info)
+      win.webContents.send('event:analysis-auto-done', info)
     }
   })
 
@@ -668,7 +672,7 @@ app.whenReady().then(async () => {
         }).show()
       }
       if (!event.sender.isDestroyed()) {
-        event.sender.send('sub:scheduler-tick', { totalNew })
+        event.sender.send('event:sub-scheduler-tick', { totalNew })
       }
     })
   })

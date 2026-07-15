@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import type { SearchResult } from '@shared/types'
 import { Input, Button, Card, Row, Col, Select, Typography, message, Empty, Spin, Checkbox } from 'antd'
 import { SearchOutlined, DownloadOutlined, ClockCircleOutlined, VideoCameraOutlined } from '@ant-design/icons'
 import { useDownloadStore } from '../../store/downloadStore'
