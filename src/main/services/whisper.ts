@@ -3,27 +3,18 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import type { TranscribeOptions, TranscribeResult, TranscribeProgress } from '../../shared/types'
-import { getFfmpegPathPublic } from './ytdlp'
+import { getFfmpegPath } from './toolPaths'
+import { killProcessTree } from './processUtils'
 import { logInfo, logError } from './logger'
 
 // ────────── Active process registry ──────────
 const activeTranscribes = new Map<string, ReturnType<typeof spawn>>()
 const cancelledTranscribes = new Set<string>()
 
-function killTree(proc: ReturnType<typeof spawn>) {
-  const pid = proc.pid
-  if (!pid) { try { proc.kill() } catch {} ; return }
-  if (process.platform === 'win32') {
-    spawn('taskkill', ['/T', '/F', '/PID', String(pid)]).on('error', () => { try { proc.kill() } catch {} })
-  } else {
-    try { process.kill(-pid, 'SIGTERM') } catch { try { proc.kill() } catch {} }
-  }
-}
-
 export function killAllTranscribes() {
   for (const [id, p] of activeTranscribes) {
     logInfo('[whisper] killing active transcribe on quit: ' + id)
-    killTree(p)
+    killProcessTree(p)
   }
   activeTranscribes.clear()
 }
@@ -32,7 +23,7 @@ export function cancelTranscribe(taskId: string): boolean {
   cancelledTranscribes.add(taskId)
   const proc = activeTranscribes.get(taskId)
   if (!proc) return false
-  killTree(proc)
+  killProcessTree(proc)
   activeTranscribes.delete(taskId)
   return true
 }
@@ -53,7 +44,7 @@ function validateConfig(cfg: TranscribeOptions['config']): string | null {
  * 用 ffmpeg 提 16kHz 单声道 WAV 到临时目录
  */
 function extractAudioAsWav(videoPath: string, taskId: string): Promise<string> {
-  const ffmpeg = getFfmpegPathPublic()
+  const ffmpeg = getFfmpegPath()
   if (!ffmpeg) return Promise.reject(new Error('未找到 ffmpeg，无法提取音频'))
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vdl-whisper-'))
   const wavPath = path.join(tmpDir, `${taskId}.wav`)
@@ -241,6 +232,6 @@ export function whisperReady(cfg: TranscribeOptions['config'] | undefined | null
   if (!cfg) return { ready: false, reason: '未配置 Whisper' }
   const err = validateConfig(cfg)
   if (err) return { ready: false, reason: err }
-  if (!getFfmpegPathPublic()) return { ready: false, reason: '缺少 ffmpeg（需要用它提取音频）' }
+  if (!getFfmpegPath()) return { ready: false, reason: '缺少 ffmpeg（需要用它提取音频）' }
   return { ready: true }
 }

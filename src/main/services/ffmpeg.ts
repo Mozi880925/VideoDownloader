@@ -3,7 +3,7 @@ import { promisify } from 'util'
 import path from 'path'
 import fs from 'fs'
 import type { FrameExtractOptions, FrameExtractResult } from '../../shared/types'
-import { getFfmpegPathPublic, getFfprobePathPublic } from './ytdlp'
+import { getFfmpegPath, getFfprobePath } from './toolPaths'
 import { logInfo, logError } from './logger'
 
 const execFileAsync = promisify(execFile)
@@ -37,7 +37,7 @@ function parseTimestamp(raw: string): number | null {
  * 用 ffprobe 获取视频时长（秒）
  */
 async function probeDuration(videoPath: string): Promise<number> {
-  const ffprobe = getFfprobePathPublic()
+  const ffprobe = getFfprobePath()
   if (!ffprobe) throw new Error('未找到 ffprobe，请确认已安装 ffmpeg（通常 ffprobe 随 ffmpeg 一起分发）')
   const { stdout } = await execFileAsync(
     ffprobe,
@@ -53,7 +53,7 @@ async function probeDuration(videoPath: string): Promise<number> {
  * 单次 ffmpeg spawn，返回 exit code 和 stderr
  */
 function runFfmpeg(args: string[], timeoutMs = 120_000): Promise<void> {
-  const ffmpeg = getFfmpegPathPublic()
+  const ffmpeg = getFfmpegPath()
   if (!ffmpeg) return Promise.reject(new Error('未找到 ffmpeg，请先安装并确保其在 PATH 中'))
   return new Promise<void>((resolve, reject) => {
     const proc = spawn(ffmpeg, args)
@@ -123,7 +123,7 @@ export async function extractFrames(options: FrameExtractOptions): Promise<Frame
   if (!videoPath || !fs.existsSync(videoPath)) {
     throw new Error('视频文件不存在：' + videoPath)
   }
-  if (!getFfmpegPathPublic()) {
+  if (!getFfmpegPath()) {
     throw new Error('未找到 ffmpeg，请先安装并确保其在系统 PATH 中')
   }
 
@@ -205,7 +205,7 @@ export async function extractFrames(options: FrameExtractOptions): Promise<Frame
  */
 export function ffmpegReady(): { ffmpeg: boolean; ffprobe: boolean } {
   return {
-    ffmpeg: !!getFfmpegPathPublic(),
-    ffprobe: !!getFfprobePathPublic(),
+    ffmpeg: !!getFfmpegPath(),
+    ffprobe: !!getFfprobePath(),
   }
 }
