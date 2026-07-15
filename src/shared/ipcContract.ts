@@ -35,6 +35,7 @@ import type {
   TopicIdea,
   CompletedRecordRow,
   FailedRecordRow,
+  AppSettings,
 } from './types'
 
 /** 无 taskId 的简单操作结果 */
@@ -86,10 +87,10 @@ export interface IpcInvokeContract {
   'db:clear-all-completed': { args: []; result: number }
   'db:clear-all-failed': { args: []; result: number }
 
+  // ---- 设置同步（渲染端 localStorage 真源 → 主进程 settingsHub 全量推送）----
+  'settings:sync': { args: [settings: AppSettings]; result: void }
+
   // ---- Cookies ----
-  'cookies:set-path': { args: [filePath: string]; result: void }
-  'cookies:set-douyin-browser': { args: [browser: string]; result: void }
-  'cookies:set-domestic-path': { args: [filePath: string]; result: void }
   'cookies:open-login-window': { args: []; result: void }
 
   // ---- ffmpeg / whisper ----
@@ -111,23 +112,19 @@ export interface IpcInvokeContract {
   'sub:new-videos': { args: [channelId?: string]; result: NewVideoItem[] }
   'sub:dismiss': { args: [videoId: string, channelId: string]; result: void }
   'sub:clear-new': { args: [channelId: string]; result: number }
-  'sub:set-interval': { args: [interval: CheckInterval]; result: void }
   'sub:growth': { args: []; result: VideoGrowthStat[] }
 
   // ---- 网络 / 代理 ----
-  'net:set-proxy': { args: [type: string, host?: string, port?: string, username?: string, password?: string]; result: void }
   'net:test': { args: []; result: NetworkTestResult[] }
   'net:ip-info': { args: []; result: IpInfo | null }
 
   // ---- YouTube Data API ----
-  'ytapi:set-key': { args: [key: string | null]; result: void }
   'ytapi:test': { args: [key: string]; result: { ok: boolean; message: string } }
 
   // ---- LLM（AI 分析）----
   'llm:test': { args: [cfg: LlmConfig]; result: { ok: boolean; message: string } }
   'llm:analyze-title': { args: [cfg: LlmConfig, input: TitleAnalysisInput, save?: { videoId: string; channelId: string }]; result: OpResult<TitleAnalysisResult> }
   'llm:analyze-channel': { args: [cfg: LlmConfig, input: ChannelAnalysisInput]; result: OpResult<ChannelAnalysisResult> }
-  'llm:set-config': { args: [cfg: LlmConfig | null, autoAnalyzeHot: boolean]; result: void }
   'analysis:get': { args: [videoId: string, channelId: string]; result: VideoAnalysisRecord | null }
   'analysis:keys': { args: []; result: { videoId: string; channelId: string }[] }
 
@@ -173,9 +170,7 @@ export const apiMethods = {
   dbDeleteFailedRecord: 'db:delete-failed-record',
   dbClearAllCompleted: 'db:clear-all-completed',
   dbClearAllFailed: 'db:clear-all-failed',
-  setCookiesPath: 'cookies:set-path',
-  setDouyinBrowser: 'cookies:set-douyin-browser',
-  setDomesticCookiesPath: 'cookies:set-domestic-path',
+  settingsSync: 'settings:sync',
   openLoginWindow: 'cookies:open-login-window',
   ffmpegReady: 'ffmpeg:ready',
   extractFrames: 'ffmpeg:extract-frames',
@@ -193,17 +188,13 @@ export const apiMethods = {
   subListNewVideos: 'sub:new-videos',
   subDismissNewVideo: 'sub:dismiss',
   subClearNewVideos: 'sub:clear-new',
-  subSetInterval: 'sub:set-interval',
   subGrowthStats: 'sub:growth',
-  setProxy: 'net:set-proxy',
   testNetwork: 'net:test',
   getIpInfo: 'net:ip-info',
-  ytApiSetKey: 'ytapi:set-key',
   ytApiTest: 'ytapi:test',
   llmTest: 'llm:test',
   llmAnalyzeTitle: 'llm:analyze-title',
   llmAnalyzeChannel: 'llm:analyze-channel',
-  llmSetConfig: 'llm:set-config',
   analysisGet: 'analysis:get',
   analysisKeys: 'analysis:keys',
   transcriptGet: 'transcript:get',

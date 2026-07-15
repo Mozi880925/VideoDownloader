@@ -1,5 +1,5 @@
 import { Notification } from 'electron'
-import { handle, sendTo, sendToAll } from './typed'
+import { handle, sendToAll } from './typed'
 import {
   addSubscription,
   listSubscriptions,
@@ -12,7 +12,6 @@ import {
   listNewVideos,
   dismissNewVideo,
   clearNewVideos,
-  startScheduler,
 } from '../services/subscription'
 import { setAutoAnalysisNotifier } from '../services/autoAnalysis'
 import type { NewVideoItem } from '../../shared/types'
@@ -138,19 +137,5 @@ export function registerSubscriptionHandlers(): void {
       console.error('[sub] clear new failed:', err)
       return 0
     }
-  })
-
-  handle('sub:set-interval', (event, interval) => {
-    startScheduler(interval, (results) => {
-      const totalNew = results.reduce((sum, r) => sum + r.newVideos.length, 0)
-      if (totalNew > 0) {
-        notifyNewVideos(
-          `定时检查：发现 ${totalNew} 个新视频`,
-          results.filter((r) => r.newVideos.length > 0).slice(0, 3)
-            .map((r) => `${r.subName}：${r.newVideos.length} 个`).join('  ·  '),
-        )
-      }
-      sendTo(event.sender, 'event:sub-scheduler-tick', { totalNew })
-    })
   })
 }

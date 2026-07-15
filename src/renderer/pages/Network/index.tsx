@@ -209,13 +209,7 @@ const Network: React.FC = () => {
     }
     setSaving(true)
     try {
-      await window.api.setProxy(
-        proxyType,
-        proxyHost.trim() || undefined,
-        proxyPort.trim() || undefined,
-        proxyUsername.trim() || undefined,
-        proxyPassword.trim() || undefined,
-      )
+      // updateSettings 内部会全量同步到主进程（yt-dlp 代理参数 + Electron session）
       updateSettings({
         proxyType,
         proxyHost: proxyHost.trim(),

@@ -1,8 +1,8 @@
 import { handle } from './typed'
-import { testLlm, analyzeTitle, analyzeChannel, setLlmRuntimeConfig } from '../services/llm'
-import { setAutoAnalyzeEnabled, saveAnalysis } from '../services/autoAnalysis'
+import { testLlm, analyzeTitle, analyzeChannel } from '../services/llm'
+import { saveAnalysis } from '../services/autoAnalysis'
 import { fetchTranscript, getCachedTranscript, getCachedOpeningText } from '../services/transcript'
-import { setYoutubeApiKey, testYoutubeApiKey } from '../services/youtubeApi'
+import { testYoutubeApiKey } from '../services/youtubeApi'
 
 export function registerLlmHandlers(): void {
   // ---- LLM（AI 分析）----
@@ -34,14 +34,7 @@ export function registerLlmHandlers(): void {
     }
   })
 
-  /** 渲染端启动 / 改设置时推送 LLM 配置和自动拆解开关（爆款自动分析在主进程跑，需要配置） */
-  handle('llm:set-config', (_e, cfg, autoAnalyzeHot) => {
-    setLlmRuntimeConfig(cfg)
-    setAutoAnalyzeEnabled(!!autoAnalyzeHot)
-  })
-
   // ---- YouTube Data API ----
-  handle('ytapi:set-key', (_e, key) => setYoutubeApiKey(key))
   handle('ytapi:test', async (_e, key) => testYoutubeApiKey(key))
 
   // ---- 视频文案（字幕提取入库）----

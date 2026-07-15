@@ -103,11 +103,7 @@ const Settings: React.FC = () => {
 
   const handleValuesChange = () => {
     const values = form.getFieldsValue()
-    updateSettings(values)
-    window.api.setCookiesPath(values.cookiesPath || '').catch(() => {})
-    window.api.setDouyinBrowser(values.douyinCookiesBrowser || 'chrome').catch(() => {})
-    window.api.llmSetConfig(values.llm ?? null, !!values.autoAnalyzeHot).catch(() => {})
-    window.api.ytApiSetKey(values.youtubeApiKey?.trim() || null).catch(() => {})
+    updateSettings(values)  // updateSettings 内部会全量同步到主进程
     // key 去重：文本输入逐字触发时不堆叠提示
     message.success({ content: '设置已保存', key: 'settings-saved' })
   }
@@ -125,8 +121,7 @@ const Settings: React.FC = () => {
     const filePath = await window.api.selectFile([{ name: 'Cookies 文件', extensions: ['txt'] }])
     if (filePath) {
       form.setFieldsValue({ cookiesPath: filePath })
-      updateSettings({ ...appSettings, cookiesPath: filePath })
-      window.api.setCookiesPath(filePath).catch(() => {})
+      updateSettings({ cookiesPath: filePath })
     }
   }
 
@@ -139,8 +134,7 @@ const Settings: React.FC = () => {
     const filePath = await window.api.selectFile([{ name: 'Cookies 文件', extensions: ['txt'] }])
     if (filePath) {
       form.setFieldsValue({ domesticCookiesPath: filePath })
-      updateSettings({ ...appSettings, domesticCookiesPath: filePath })
-      window.api.setDomesticCookiesPath(filePath).catch(() => {})
+      updateSettings({ domesticCookiesPath: filePath })
     }
   }
 

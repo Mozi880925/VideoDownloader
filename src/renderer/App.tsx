@@ -58,38 +58,9 @@ const App: React.FC = () => {
     if (!dbLoaded) loadFromDb()
   }, [dbLoaded, loadFromDb])
 
-  // 启动时将已保存的 cookies 路径同步到主进程
+  // 启动时把全量设置推送到主进程 settingsHub（此后每次 updateSettings 自动重新推送）
   useEffect(() => {
-    const { cookiesPath, douyinCookiesBrowser, domesticCookiesPath } = useSettingsStore.getState().appSettings
-    window.api.setCookiesPath(cookiesPath || '').catch(() => {})
-    window.api.setDouyinBrowser(douyinCookiesBrowser || 'chrome').catch(() => {})
-    window.api.setDomesticCookiesPath(domesticCookiesPath || '').catch(() => {})
-  }, [])
-
-  // 启动时把订阅检查间隔推送到主进程
-  useEffect(() => {
-    const interval = useSettingsStore.getState().appSettings.subscriptionCheckInterval || '6h'
-    window.api.subSetInterval(interval).catch(() => {})
-  }, [])
-
-  // 启动时把 LLM 配置和爆款自动拆解开关推送到主进程（定时检查的自动拆解在主进程跑）
-  useEffect(() => {
-    const { llm, autoAnalyzeHot } = useSettingsStore.getState().appSettings
-    window.api.llmSetConfig(llm ?? null, !!autoAnalyzeHot).catch(() => {})
-  }, [])
-
-  // 启动时把 YouTube Data API Key 推送到主进程（订阅检查走官方 API 拿精确播放量）
-  useEffect(() => {
-    const { youtubeApiKey } = useSettingsStore.getState().appSettings
-    window.api.ytApiSetKey(youtubeApiKey?.trim() || null).catch(() => {})
-  }, [])
-
-  // 启动时同步代理设置到主进程
-  useEffect(() => {
-    const { proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword } = useSettingsStore.getState().appSettings
-    if (proxyType && proxyType !== 'none') {
-      window.api.setProxy(proxyType, proxyHost, proxyPort, proxyUsername, proxyPassword).catch(() => {})
-    }
+    window.api.settingsSync(useSettingsStore.getState().appSettings).catch(() => {})
   }, [])
 
   // 监听重新下载请求 → 自动切到单视频下载页

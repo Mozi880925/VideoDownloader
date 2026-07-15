@@ -246,6 +246,7 @@ export async function checkAllSubscriptions(
 // ────────── 定时检查 ──────────
 
 let scheduleTimer: NodeJS.Timeout | null = null
+let currentInterval: CheckInterval | null = null
 
 function intervalMs(i: CheckInterval): number {
   switch (i) {
@@ -260,6 +261,9 @@ export function startScheduler(
   interval: CheckInterval,
   onBatchDone?: (results: { subId: string; subName: string; newVideos: NewVideoItem[]; err?: Error }[]) => void,
 ): void {
+  // 幂等：间隔未变则不重启（settings:sync 每次全量推送都会走到这里）
+  if (interval === currentInterval && (scheduleTimer !== null || intervalMs(interval) <= 0)) return
+  currentInterval = interval
   stopScheduler()
   const ms = intervalMs(interval)
   if (ms <= 0) {

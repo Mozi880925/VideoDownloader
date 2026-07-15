@@ -68,6 +68,8 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   updateSettings: (newSettings) => set((state) => {
     const updated = { ...state.appSettings, ...newSettings }
     localStorage.setItem('vdownload_settings', JSON.stringify(updated))
+    // 全量推送到主进程 settingsHub（主进程各 service 的运行时缓存以此为准）
+    window.api.settingsSync(updated).catch(() => {})
     return { appSettings: updated }
   }),
 

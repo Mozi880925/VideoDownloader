@@ -307,8 +307,7 @@ const Subscriptions: React.FC = () => {
   }
 
   const handleIntervalChange = async (val: CheckInterval) => {
-    updateSettings({ subscriptionCheckInterval: val })
-    await window.api.subSetInterval(val)
+    updateSettings({ subscriptionCheckInterval: val })  // 内部会同步到主进程重启调度器
     message.success('检查间隔已更新')
   }
 
