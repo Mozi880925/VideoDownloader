@@ -36,8 +36,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 contextBridge.exposeInMainWorld('api', {
   /** 解析视频信息 */
-  parseVideo: (url: string, proxy?: string): Promise<TaskResult<VideoInfo>> =>
-    ipcRenderer.invoke('parse-video', url, proxy),
+  parseVideo: (url: string, proxy?: string, taskId?: string): Promise<TaskResult<VideoInfo>> =>
+    ipcRenderer.invoke('parse-video', url, proxy, taskId),
 
   /** 搜索素材视频 */
   searchVideos: (keyword: string, limit?: number, proxy?: string): Promise<TaskResult<SearchResult[]>> =>

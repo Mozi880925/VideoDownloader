@@ -1,6 +1,7 @@
 import { net } from 'electron'
 import type { VideoListItem, VideoListResult } from '../../shared/types'
 import { logInfo, logError } from './logger'
+import { isoToUploadDate } from '../../shared/dateUtils'
 
 // ────────── YouTube Data API v3 ──────────
 // 配置 API Key 后，频道视频列表 + 精确播放量改走官方 API（监控排行榜网站同款方案）：
@@ -58,13 +59,6 @@ function parseIsoDuration(iso: string): number | undefined {
   if (!m) return undefined
   const [, d, h, min, s] = m
   return (Number(d) || 0) * 86400 + (Number(h) || 0) * 3600 + (Number(min) || 0) * 60 + (Number(s) || 0)
-}
-
-/** ISO 时间 → YYYYMMDD */
-function isoToUploadDate(iso: string): string | undefined {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return undefined
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
 }
 
 interface ParsedChannelUrl {

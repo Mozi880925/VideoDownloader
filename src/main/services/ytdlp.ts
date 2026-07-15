@@ -15,6 +15,7 @@ import type {
 } from '../../shared/types'
 import { logInfo, logError } from './logger'
 import { fetchChannelVideosViaApi } from './youtubeApi'
+import { isoToUploadDate } from '../../shared/dateUtils'
 
 const execFileAsync = promisify(execFile)
 
@@ -794,13 +795,6 @@ async function fetchYoutubeRssStats(
     clearTimeout(timer)
   }
   return stats
-}
-
-/** ISO 时间 → YYYYMMDD */
-function isoToUploadDate(iso: string): string | undefined {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return undefined
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
 }
 
 /**

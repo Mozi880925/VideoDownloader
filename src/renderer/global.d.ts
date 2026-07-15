@@ -87,7 +87,7 @@ declare global {
   }
 
   interface RendererAPI {
-    parseVideo: (url: string, proxy?: string) => Promise<TaskResult<VideoInfo>>
+    parseVideo: (url: string, proxy?: string, taskId?: string) => Promise<TaskResult<VideoInfo>>
     searchVideos: (keyword: string, limit?: number, proxy?: string) => Promise<TaskResult<SearchResult[]>>
     fetchVideoList: (
       url: string,

@@ -8,6 +8,7 @@
     "vite": "vite",
     "electron:dev": "tsc -p tsconfig.electron.json && wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
     "build": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false vite build && tsc -p tsconfig.electron.json && electron-builder",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "start": "electron .",
     "postinstall": "electron-builder install-app-deps"
   },

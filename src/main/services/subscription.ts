@@ -21,11 +21,6 @@ import {
 import { queueHotVideos } from './autoAnalysis'
 import { logInfo, logError } from './logger'
 
-// 兼容旧 setYtdlpPathGetter 调用：现在直接用 ytdlp.fetchVideoList，无需注入
-export function setYtdlpPathGetter(_fn: () => string) {
-  // no-op: 保留接口以兼容 main/index.ts 现有调用
-}
-
 // ────────── 类型转换 ──────────
 
 function rowToSubscription(r: ChannelSubscriptionRow): ChannelSubscription {

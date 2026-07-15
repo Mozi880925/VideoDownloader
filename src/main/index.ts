@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } fro
 import path from 'path'
 import fs from 'fs'
 import { registerDownloadHandlers } from './ipc/download'
-import { detectYtdlp, cancelParse, killAllActive, setCookiesPath, setProxyUrl, setDouyinCookiesBrowser, setDomesticCookiesPath, getYtdlpPathPublic, fetchVideoList, extractSubtitles } from './services/ytdlp'
+import { detectYtdlp, cancelParse, killAllActive, setCookiesPath, setProxyUrl, setDouyinCookiesBrowser, setDomesticCookiesPath, fetchVideoList, extractSubtitles } from './services/ytdlp'
 import { applySessionProxy, buildProxyUrl, testAllSites, getIpInfo } from './services/network'
 import type { ProxyType } from '../shared/types'
 import { extractFrames, ffmpegReady } from './services/ffmpeg'
@@ -23,7 +23,6 @@ import {
   listNewVideos,
   dismissNewVideo,
   clearNewVideos,
-  setYtdlpPathGetter as setSubYtdlpPathGetter,
   startScheduler,
   stopScheduler,
 } from './services/subscription'
@@ -54,6 +53,16 @@ import {
 
 const isDev = process.env.NODE_ENV === 'development'
 
+// 窗口控制：模块级注册一次，避免 activate 重建窗口时监听器累积
+ipcMain.on('window:minimize', (e) => BrowserWindow.fromWebContents(e.sender)?.minimize())
+ipcMain.on('window:maximize', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender)
+  if (!win) return
+  if (win.isMaximized()) win.unmaximize()
+  else win.maximize()
+})
+ipcMain.on('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400,
@@ -68,13 +77,6 @@ function createWindow() {
     frame: false,
     show: false,
   })
-
-  ipcMain.on('window:minimize', () => win.minimize())
-  ipcMain.on('window:maximize', () => {
-    if (win.isMaximized()) win.unmaximize()
-    else win.maximize()
-  })
-  ipcMain.on('window:close', () => win.close())
 
   if (isDev) {
     win.loadURL('http://localhost:5173')
@@ -561,7 +563,6 @@ app.whenReady().then(async () => {
   ipcMain.handle('whisper:cancel', (_event, taskId: string) => cancelTranscribe(taskId))
 
   // ---- 频道订阅 ----
-  setSubYtdlpPathGetter(() => getYtdlpPathPublic())
 
   // 爆款自动拆解完成 → 推送渲染端刷新角标
   setAutoAnalysisNotifier((info) => {

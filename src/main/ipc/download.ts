@@ -11,13 +11,13 @@ function classifyError(msg: string): TaskResult<never>['status'] {
 
 export function registerDownloadHandlers(): void {
   // 解析视频信息 — 始终 resolve TaskResult，不再 reject
-  ipcMain.handle('parse-video', async (_event, url: string, proxy?: string): Promise<TaskResult<VideoInfo>> => {
+  ipcMain.handle('parse-video', async (_event, url: string, proxy?: string, taskId?: string): Promise<TaskResult<VideoInfo>> => {
     try {
-      const info = await parseVideo(url, proxy)
-      return { taskId: '', status: 'success', data: info }
+      const info = await parseVideo(url, proxy, taskId)
+      return { taskId: taskId ?? '', status: 'success', data: info }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      return { taskId: '', status: classifyError(msg), errorMessage: msg }
+      return { taskId: taskId ?? '', status: classifyError(msg), errorMessage: msg }
     }
   })
 

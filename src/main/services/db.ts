@@ -364,11 +364,13 @@ export function updateSubscriptionEnabled(id: string, enabled: boolean): void {
 
 export function deleteSubscription(id: string): void {
   const db = ensureDb()
-  db.prepare('DELETE FROM channel_subscriptions WHERE id = ?').run(id)
-  db.prepare('DELETE FROM channel_new_videos WHERE channel_id = ?').run(id)
-  db.prepare('DELETE FROM video_transcripts WHERE channel_id = ?').run(id)
-  db.prepare('DELETE FROM video_analyses WHERE channel_id = ?').run(id)
-  db.prepare('DELETE FROM view_snapshots WHERE channel_id = ?').run(id)
+  db.transaction(() => {
+    db.prepare('DELETE FROM channel_subscriptions WHERE id = ?').run(id)
+    db.prepare('DELETE FROM channel_new_videos WHERE channel_id = ?').run(id)
+    db.prepare('DELETE FROM video_transcripts WHERE channel_id = ?').run(id)
+    db.prepare('DELETE FROM video_analyses WHERE channel_id = ?').run(id)
+    db.prepare('DELETE FROM view_snapshots WHERE channel_id = ?').run(id)
+  })()
   console.log('[db] deleted subscription:', id)
 }
 
