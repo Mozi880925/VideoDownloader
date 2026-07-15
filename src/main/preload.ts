@@ -158,6 +158,10 @@ contextBridge.exposeInMainWorld('api', {
   setDouyinBrowser: (browser: string): Promise<void> =>
     ipcRenderer.invoke('set-douyin-browser', browser),
 
+  /** 设置国内平台独立 cookies 文件路径 */
+  setDomesticCookiesPath: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('set-domestic-cookies-path', filePath),
+
   /** 打开 YouTube 登录窗口，关闭后自动导出 cookie */
   openLoginWindow: (): Promise<void> =>
     ipcRenderer.invoke('open-login-window'),

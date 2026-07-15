@@ -43,6 +43,9 @@ const ERROR_RULES: ErrorRule[] = [
   { pattern: /This video has been removed/i,             message: '视频已被移除' },
   { pattern: /account.*?(terminated|suspended)/i,        message: '视频发布者的账号已被停用' },
 
+  // ---- Cookie 读取错误 ----
+  { pattern: /Could not copy.*?cookie database/i,         message: 'Chrome 运行时 yt-dlp 无法读取 Cookie 数据库。解决办法：1) 关闭 Chrome 后重试；或 2) 在设置中配置独立的「国内平台 Cookies 文件」（推荐）' },
+
   // ---- yt-dlp 内部错误 ----
   { pattern: /Unsupported\s+URL/i,                       message: '不支持的链接格式或平台' },
   { pattern: /no\s+video\s+formats/i,                    message: '未找到可用的视频格式' },

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Card, Form, Select, Switch, Button, message, Input, InputNumber, Tag, Spin, Segmented } from 'antd'
+import { Card, Form, Select, Switch, Button, message, Input, InputNumber, Tag, Spin, Segmented, Divider } from 'antd'
 import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined, RobotOutlined, ApiOutlined } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/downloadStore'
 
@@ -132,6 +132,15 @@ const Settings: React.FC = () => {
   const handleLoginYouTube = async () => {
     message.info('请在弹出窗口中完成登录，关闭窗口后 Cookie 将自动保存')
     await window.api.openLoginWindow().catch(() => {})
+  }
+
+  const handleSelectDomesticCookiesFile = async () => {
+    const filePath = await window.api.selectFile([{ name: 'Cookies 文件', extensions: ['txt'] }])
+    if (filePath) {
+      form.setFieldsValue({ domesticCookiesPath: filePath })
+      updateSettings({ ...appSettings, domesticCookiesPath: filePath })
+      window.api.setDomesticCookiesPath(filePath).catch(() => {})
+    }
   }
 
   const handleOpenLogs = async () => {
@@ -314,12 +323,12 @@ const Settings: React.FC = () => {
             </Form.Item>
 
             <Form.Item
-              label="抖音 Cookie 来源"
+              label="国内平台 Cookie 来源"
               name="douyinCookiesBrowser"
-              extra="抖音需要新鲜的浏览器 Cookie 才能下载，请选择您已登录抖音的浏览器。选「不使用」则依赖上方 Cookie 文件（通常会失败）。"
+              extra="抖音、小红书需要 Cookie。优先使用下方独立 Cookies 文件（最稳定）；未配置时回退到浏览器读取。Chrome 运行时可能读 cookie 失败，请见下方独立文件方案。"
             >
               <Select style={{ width: 220 }}>
-                <Select.Option value="chrome">Chrome（推荐）</Select.Option>
+                <Select.Option value="chrome">Chrome</Select.Option>
                 <Select.Option value="edge">Microsoft Edge</Select.Option>
                 <Select.Option value="firefox">Firefox</Select.Option>
                 <Select.Option value="chromium">Chromium</Select.Option>
@@ -327,6 +336,23 @@ const Settings: React.FC = () => {
                 <Select.Option value="opera">Opera</Select.Option>
                 <Select.Option value="none">不使用浏览器 Cookie</Select.Option>
               </Select>
+            </Form.Item>
+
+            <Divider style={{ margin: '16px 0', fontSize: 13, fontWeight: 500 }} plain>
+              或使用独立 Cookies 文件（最稳定，推荐）
+            </Divider>
+
+            <Form.Item
+              label="国内平台 Cookies 文件"
+              name="domesticCookiesPath"
+              extra="解决 Chrome 运行时 yt-dlp 无法读取 cookie 数据库的问题。用 Get cookies.txt LOCALLY 扩展导出含 douyin.com 和 xiaohongshu.com 的 cookies 文件。配置后优先使用，浏览器来源仅作兜底。"
+            >
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Form.Item name="domesticCookiesPath" noStyle>
+                  <Input readOnly placeholder="未选择，将使用浏览器 Cookie..." />
+                </Form.Item>
+                <Button icon={<SafetyCertificateOutlined />} onClick={handleSelectDomesticCookiesFile}>选择文件</Button>
+              </div>
             </Form.Item>
           </Card>
         )}

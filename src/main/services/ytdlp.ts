@@ -132,14 +132,26 @@ export function setDouyinCookiesBrowser(browser: string): void {
   logInfo(`[ytdlp] douyin cookies browser: ${browser || '(none)'}`)
 }
 
-/** 判断 URL 是否属于抖音平台 */
-function isDouyinUrl(url: string): boolean {
+// ────────── 国内平台独立 Cookies 文件（解决 Chrome 运行时锁 cookie DB 问题）──────────
+
+let cachedDomesticCookiesPath = ''
+
+export function setDomesticCookiesPath(filePath: string): void {
+  cachedDomesticCookiesPath = filePath
+  logInfo(`[ytdlp] domestic cookies path updated: ${filePath || '(none)'}`)
+}
+
+/** 判断 URL 是否需要浏览器 Cookie（抖音/小红书等国内平台） */
+function isDomesticPlatform(url: string): boolean {
   try {
     const { hostname } = new URL(url)
     return hostname === 'douyin.com' ||
            hostname.endsWith('.douyin.com') ||
            hostname === 'iesdouyin.com' ||
-           hostname.endsWith('.iesdouyin.com')
+           hostname.endsWith('.iesdouyin.com') ||
+           hostname === 'xiaohongshu.com' ||
+           hostname.endsWith('.xiaohongshu.com') ||
+           hostname === 'xhslink.com'
   } catch {
     return false
   }
@@ -167,9 +179,11 @@ function buildBaseArgs(proxy?: string, targetUrl?: string): string[] {
   if (js) args.push('--js-runtimes', `${js.kind}:${js.path}`)
   else console.warn('[ytdlp] No JS runtime found — YouTube n-challenge may fail')
 
-  // 抖音需要新鲜浏览器 Cookie；其他平台使用 cookies 文件
-  if (targetUrl && isDouyinUrl(targetUrl)) {
-    if (cachedDouyinBrowser && cachedDouyinBrowser !== 'none') {
+  // 抖音、小红书需要 Cookie；优先用独立文件（最稳定），否则读浏览器
+  if (targetUrl && isDomesticPlatform(targetUrl)) {
+    if (cachedDomesticCookiesPath && fs.existsSync(cachedDomesticCookiesPath)) {
+      args.push('--cookies', cachedDomesticCookiesPath)
+    } else if (cachedDouyinBrowser && cachedDouyinBrowser !== 'none') {
       args.push('--cookies-from-browser', cachedDouyinBrowser)
     }
   } else if (cachedCookiesPath && fs.existsSync(cachedCookiesPath)) {

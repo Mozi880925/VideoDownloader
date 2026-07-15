@@ -121,6 +121,7 @@ declare global {
     selectFile: (filters?: { name: string; extensions: string[] }[]) => Promise<string | undefined>
     setCookiesPath: (filePath: string) => Promise<void>
     setDouyinBrowser: (browser: string) => Promise<void>
+    setDomesticCookiesPath: (filePath: string) => Promise<void>
     openLoginWindow: () => Promise<void>
     onCookiesPathUpdated: (callback: (filePath: string) => void) => () => void
     ytdlpUpdate: () => Promise<{ success: boolean; output: string }>

@@ -144,7 +144,8 @@ export interface AppSettings {
   proxyPort?: string
   proxyUsername?: string
   proxyPassword?: string
-  douyinCookiesBrowser?: string    // 抖音专用浏览器 Cookie 来源，默认 'chrome'
+  douyinCookiesBrowser?: string    // 浏览器 Cookie 来源（抖音/小红书等国内平台），默认 'chrome'
+  domesticCookiesPath?: string     // 国内平台独立 cookies 文件，优先级高于浏览器读取（解决 Chrome 运行时锁文件问题）
   llm?: LlmConfig                  // AI 分析用的 OpenAI 兼容 API 配置
   autoAnalyzeHot?: boolean         // 检查订阅时自动 AI 拆解爆款新视频，默认 false
   youtubeApiKey?: string           // YouTube Data API v3 Key，配置后订阅检查改走官方 API（精确播放量）

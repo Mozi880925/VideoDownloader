@@ -26,6 +26,7 @@ function loadSettings(): AppSettings {
     folderOrganize: 'none',
     proxyType: 'none',
     douyinCookiesBrowser: 'chrome',
+    domesticCookiesPath: '',
     proxyHost: '',
     proxyPort: '',
     llm: {

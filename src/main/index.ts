@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } fro
 import path from 'path'
 import fs from 'fs'
 import { registerDownloadHandlers } from './ipc/download'
-import { detectYtdlp, cancelParse, killAllActive, setCookiesPath, setProxyUrl, setDouyinCookiesBrowser, getYtdlpPathPublic, fetchVideoList, extractSubtitles } from './services/ytdlp'
+import { detectYtdlp, cancelParse, killAllActive, setCookiesPath, setProxyUrl, setDouyinCookiesBrowser, setDomesticCookiesPath, getYtdlpPathPublic, fetchVideoList, extractSubtitles } from './services/ytdlp'
 import { applySessionProxy, buildProxyUrl, testAllSites, getIpInfo } from './services/network'
 import type { ProxyType } from '../shared/types'
 import { extractFrames, ffmpegReady } from './services/ffmpeg'
@@ -389,6 +389,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('set-douyin-browser', (_event, browser: string) => {
     setDouyinCookiesBrowser(browser)
+  })
+
+  ipcMain.handle('set-domestic-cookies-path', (_event, filePath: string) => {
+    setDomesticCookiesPath(filePath)
   })
 
   // ---- 代理设置 ----

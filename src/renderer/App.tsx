@@ -60,9 +60,10 @@ const App: React.FC = () => {
 
   // 启动时将已保存的 cookies 路径同步到主进程
   useEffect(() => {
-    const { cookiesPath, douyinCookiesBrowser } = useSettingsStore.getState().appSettings
+    const { cookiesPath, douyinCookiesBrowser, domesticCookiesPath } = useSettingsStore.getState().appSettings
     window.api.setCookiesPath(cookiesPath || '').catch(() => {})
     window.api.setDouyinBrowser(douyinCookiesBrowser || 'chrome').catch(() => {})
+    window.api.setDomesticCookiesPath(domesticCookiesPath || '').catch(() => {})
   }, [])
 
   // 启动时把订阅检查间隔推送到主进程
