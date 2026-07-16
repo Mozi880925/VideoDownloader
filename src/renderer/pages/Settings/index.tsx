@@ -88,6 +88,17 @@ const Settings: React.FC = () => {
         setUpdateOutput('')
         // 4 秒后淡出标签
         setTimeout(() => setUpdateResult(null), 4000)
+      } else if (/installed yt-dlp with pip|wheel from PyPi/i.test(result.output)) {
+        // pip/wheel 安装的 yt-dlp 不支持自更新，给出明确指引（原始输出保留在下方日志框）
+        setUpdateOutput(
+          '检测到你的 yt-dlp 是通过 pip 安装的，不支持应用内自更新。\n' +
+          '请在终端运行以下命令更新：\n\n' +
+          '    pip install -U yt-dlp\n\n' +
+          '（更新后点上方「检测」即可看到新版本号）\n\n' +
+          '---- yt-dlp 原始输出 ----\n' +
+          result.output,
+        )
+        message.warning('yt-dlp 是 pip 安装的，请在终端运行 pip install -U yt-dlp 更新', 8)
       } else {
         // 失败时保留输出方便排查
         setUpdateOutput(result.output)
