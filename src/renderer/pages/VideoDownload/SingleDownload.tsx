@@ -29,14 +29,13 @@ import {
   PlusOutlined,
   ScissorOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useNavStore } from '../../store/navStore'
-import { friendlyError } from '../../../shared/errorTranslator'
 import { extractFirstUrl, extractUrls } from '../../../shared/extractUrls'
-import { buildOutputPath } from '../../utils/buildOutputPath'
 import { formatDuration as fmtDuration, formatUploadDate } from '../../utils/format'
 import { genTaskId } from '../../utils/id'
+import { runParse } from '../../utils/videoParse'
+import { runDownload, resolveOutputPath, checkDiskSpace } from '../../utils/downloadRunner'
 
 // ---- 工具函数 ----
 
@@ -167,15 +166,15 @@ const SingleDownload: React.FC = () => {
     setDownloadDone(false)
     setFinalFilepath(undefined)
     try {
-      const result = await window.api.parseVideo(trimmed)
-      if (result.status === 'success' && result.data) {
-        setVideoInfo(result.data)
+      const outcome = await runParse(trimmed)
+      if (outcome.kind === 'success') {
+        setVideoInfo(outcome.info)
         const fmt = appSettings.defaultFormat
         setSelectedFormatId(!fmt || fmt === 'best' ? '__best__' : fmt)
-      } else if (result.status === 'cookie_error') {
-        messageApi.error(result.errorMessage || 'Cookie读取失败，请确认 Chrome 已安装且未锁定')
-      } else if (result.status !== 'cancelled') {
-        messageApi.error(`解析失败：${friendlyError(result.errorMessage || '')}`)
+      } else if (outcome.kind === 'cookie_error') {
+        messageApi.error(outcome.message)
+      } else if (outcome.kind === 'failed') {
+        messageApi.error(`解析失败：${outcome.message}`)
       }
     } finally {
       setParsing(false)
@@ -221,38 +220,17 @@ const SingleDownload: React.FC = () => {
       setStatusText(prev => prev === '正在连接服务器...' ? '网络较慢，正在重试连接...' : prev)
     }, 3000)
 
-    // 加入全局 store
     const videoUrl = videoInfo.webpage_url || url.trim()
-    useDownloadStore.getState().addTask({
-      taskId,
-      url: videoUrl,
-      title: videoInfo.title || '未知标题',
-      thumbnail: videoInfo.thumbnail || '',
-      platform: detectPlatform(videoUrl),
-    })
-
-    const baseDir = appSettings.downloadPath ||
-      downloadsPath ||
-      await window.api.getDownloadsPath().catch(() => '')
-    const outputPath = buildOutputPath(
-      videoUrl, baseDir,
-      appSettings.namingRule || '',
-      appSettings.folderOrganize ?? 'none',
-    )
+    const { baseDir, outputPath } = await resolveOutputPath(videoUrl, downloadsPath)
 
     // 磁盘空间预估检查（非阻塞，仅警告）
-    try {
-      const estimatedBytes = videoInfo.formats?.reduce((max, f) => Math.max(max, f.filesize || 0), 0) || 0
-      if (estimatedBytes > 0 && baseDir) {
-        const disk = await window.api.getDiskSpace(baseDir)
-        if (disk.available > 0 && estimatedBytes > disk.available) {
-          const toMB = (b: number) => (b / 1024 / 1024).toFixed(0)
-          messageApi.warning(`磁盘空间可能不足：预估 ${toMB(estimatedBytes)} MB，可用 ${toMB(disk.available)} MB`, 6)
-        }
-      }
-    } catch { /* 忽略磁盘检查失败 */ }
+    const estimatedBytes = videoInfo.formats?.reduce((max, f) => Math.max(max, f.filesize || 0), 0) || 0
+    const low = await checkDiskSpace(baseDir, estimatedBytes)
+    if (low) {
+      messageApi.warning(`磁盘空间可能不足：预估 ${low.estimatedMB} MB，可用 ${low.availableMB} MB`, 6)
+    }
 
-    // 监听进度
+    // 监听进度（本页进度条；全局 store 由 App 常驻监听同步）
     const removeListener = window.api.onDownloadProgress((p) => {
       if (p.taskId === taskId) {
         clearTimeout(slowTimer)
@@ -260,10 +238,6 @@ const SingleDownload: React.FC = () => {
         if (p.progress < 100) {
           setStatusText('正在下载…')
         }
-        // 同步到 store
-        useDownloadStore.getState().updateProgress(
-          taskId, p.progress, p.speed, p.eta, p.filesize,
-        )
       }
     })
 
@@ -274,11 +248,13 @@ const SingleDownload: React.FC = () => {
       : undefined
 
     try {
-      const result = await window.api.downloadVideo({
-        url: videoUrl,
-        formatId: audioOnly ? undefined : effectiveFormatId,
-        outputPath,
+      const outcome = await runDownload({
         taskId,
+        url: videoUrl,
+        title: videoInfo.title,
+        thumbnail: videoInfo.thumbnail,
+        outputPath,
+        formatId: audioOnly ? undefined : effectiveFormatId,
         subtitles: effectiveSubtitles,
         section: selectedSection ?? undefined,
         audioOnly,
@@ -286,26 +262,16 @@ const SingleDownload: React.FC = () => {
 
       setStatusText('')
 
-      if (result.status === 'success') {
-        setFinalFilepath(result.data)
+      if (outcome.kind === 'success') {
+        setFinalFilepath(outcome.filepath)
         setDownloadDone(true)
         setSelectedSection(null)
-        const taskInStore = useDownloadStore.getState().activeTasks.find(t => t.taskId === taskId)
-        const instant = taskInStore ? !taskInStore.hasReceivedProgress : false
-        setIsInstantSkip(instant)
-        messageApi.success(instant ? '已检测到本地文件，极速秒传完成！' : '下载完成！')
-        useDownloadStore.getState().completeTask(taskId, result.data || '')
-        if (appSettings.enableNotification) {
-          window.api.showNotification('下载完成', videoInfo.title || '视频下载成功').catch(() => {})
-        }
-      } else if (result.status === 'cancelled') {
-        useDownloadStore.getState().cancelTask(taskId)
-      } else if (result.status === 'cookie_error') {
-        messageApi.error(result.errorMessage || 'Cookie读取失败，请确认 Chrome 已安装且未锁定')
-        useDownloadStore.getState().failTask(taskId, result.errorMessage || '')
-      } else {
-        messageApi.error(`下载失败：${friendlyError(result.errorMessage || '')}`)
-        useDownloadStore.getState().failTask(taskId, result.errorMessage || '')
+        setIsInstantSkip(outcome.instantSkip)
+        messageApi.success(outcome.instantSkip ? '已检测到本地文件，极速秒传完成！' : '下载完成！')
+      } else if (outcome.kind === 'cookie_error') {
+        messageApi.error(outcome.message)
+      } else if (outcome.kind === 'failed') {
+        messageApi.error(`下载失败：${outcome.message}`)
       }
     } finally {
       clearTimeout(slowTimer)

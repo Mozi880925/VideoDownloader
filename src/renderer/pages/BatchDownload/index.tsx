@@ -35,15 +35,14 @@ import {
 } from '@ant-design/icons'
 import {
   useDownloadStore,
-  detectPlatform,
   type BatchTask,
   type ParseStatus,
   type DownloadStatus,
 } from '../../store/downloadStore'
 import { useSettingsStore } from '../../store/settingsStore'
-import { friendlyError } from '../../../shared/errorTranslator'
-import { buildOutputPath } from '../../utils/buildOutputPath'
 import { extractAllUrls } from '../../../shared/extractUrls'
+import { runParse } from '../../utils/videoParse'
+import { runDownload, resolveOutputPath, checkDiskSpace } from '../../utils/downloadRunner'
 import { formatDuration as fmtDuration } from '../../utils/format'
 import { genTaskId } from '../../utils/id'
 import './styles.css'
@@ -197,10 +196,10 @@ const BatchDownload: React.FC = () => {
         prev.map((t) => t.id === task.id ? { ...t, parseStatus: 'parsing' as const } : t),
       )
 
-      const result = await window.api.parseVideo(task.url)
+      const outcome = await runParse(task.url)
 
-      if (result.status === 'success' && result.data) {
-        const info = result.data
+      if (outcome.kind === 'success') {
+        const info = outcome.info
         setTasks((prev) =>
           prev.map((t) => {
             if (t.id !== task.id) return t
@@ -216,7 +215,7 @@ const BatchDownload: React.FC = () => {
             }
           }),
         )
-      } else if (result.status === 'cancelled') {
+      } else if (outcome.kind === 'cancelled') {
         setTasks((prev) =>
           prev.map((t) => t.id === task.id ? { ...t, parseStatus: 'waiting' as const } : t),
         )
@@ -228,9 +227,7 @@ const BatchDownload: React.FC = () => {
             return {
               ...t,
               parseStatus: 'parse_failed' as const,
-              parseError: result.status === 'cookie_error'
-                ? (result.errorMessage || 'Cookie读取失败')
-                : friendlyError(result.errorMessage || ''),
+              parseError: outcome.message,
             }
           }),
         )
@@ -288,19 +285,14 @@ const BatchDownload: React.FC = () => {
     }
 
     // 磁盘空间预估检查（非阻塞，仅警告）
-    try {
+    {
       const baseDir = useSettingsStore.getState().appSettings.downloadPath || downloadsPath
-      if (baseDir) {
-        const totalEstimated = downloadable.reduce((sum, t) => sum + (t.filesize || 0), 0)
-        if (totalEstimated > 0) {
-          const disk = await window.api.getDiskSpace(baseDir)
-          if (disk.available > 0 && totalEstimated > disk.available) {
-            const toMB = (b: number) => (b / 1024 / 1024).toFixed(0)
-            messageApi.warning(`磁盘空间可能不足：预估共 ${toMB(totalEstimated)} MB，可用 ${toMB(disk.available)} MB`, 8)
-          }
-        }
+      const totalEstimated = downloadable.reduce((sum, t) => sum + (t.filesize || 0), 0)
+      const low = await checkDiskSpace(baseDir, totalEstimated)
+      if (low) {
+        messageApi.warning(`磁盘空间可能不足：预估共 ${low.estimatedMB} MB，可用 ${low.availableMB} MB`, 8)
       }
-    } catch { /* 忽略磁盘检查失败 */ }
+    }
 
     const queue = downloadable.map((t) => t.id)
 
@@ -332,66 +324,47 @@ const BatchDownload: React.FC = () => {
           ),
         )
 
-        // 加入 downloadStore
-        useDownloadStore.getState().addTask({
-          taskId: downloadTaskId,
-          url: videoUrl,
-          title: task.title || '未知标题',
-          thumbnail: task.thumbnail || '',
-          platform: detectPlatform(videoUrl),
-        })
-
-        const baseDir = appSettings.downloadPath || downloadsPath
-        const outputPath = buildOutputPath(
-          videoUrl, baseDir,
-          appSettings.namingRule || '',
-          appSettings.folderOrganize ?? 'none',
-        )
+        const { outputPath } = await resolveOutputPath(videoUrl, downloadsPath)
 
         activeDownloadTaskIdRef.current = downloadTaskId
         const subs = appSettings.subtitles
         const effectiveSubtitles = subs?.enabled && subs.languages.length > 0 ? subs : undefined
-        const result = await window.api.downloadVideo({
-          url: videoUrl,
-          formatId: (!appSettings.defaultFormat || appSettings.defaultFormat === 'best') ? '' : appSettings.defaultFormat,
-          outputPath,
+        const outcome = await runDownload({
           taskId: downloadTaskId,
+          url: videoUrl,
+          title: task.title,
+          thumbnail: task.thumbnail,
+          outputPath,
+          formatId: (!appSettings.defaultFormat || appSettings.defaultFormat === 'best') ? '' : appSettings.defaultFormat,
           subtitles: effectiveSubtitles,
+          notifyTitle: '批量下载 - 任务完成',
+          notifyFallbackBody: '某任务下载成功',
         })
         activeDownloadTaskIdRef.current = null
 
-        if (result.status === 'success') {
+        if (outcome.kind === 'success') {
           setTasks((prev) =>
             prev.map((t) =>
               t.id === taskId
-                ? { ...t, downloadStatus: 'downloaded' as const, filepath: result.data, progress: 100 }
+                ? { ...t, downloadStatus: 'downloaded' as const, filepath: outcome.filepath, progress: 100 }
                 : t,
             ),
           )
-          useDownloadStore.getState().completeTask(downloadTaskId, result.data || '')
-          if (appSettings.enableNotification) {
-            window.api.showNotification('批量下载 - 任务完成', task.title || '某任务下载成功').catch(() => {})
-          }
-        } else if (result.status === 'cancelled') {
+        } else if (outcome.kind === 'cancelled') {
           setTasks((prev) =>
             prev.map((t) =>
               t.id === taskId ? { ...t, downloadStatus: 'cancelled' as const } : t,
             ),
           )
-          useDownloadStore.getState().cancelTask(downloadTaskId)
         } else {
-          // failed / timeout / cookie_error — cookie_error 保留原始信息不经 friendlyError 翻译
-          const displayError = result.status === 'cookie_error'
-            ? (result.errorMessage || 'Cookie读取失败')
-            : friendlyError(result.errorMessage || '')
+          // failed / timeout / cookie_error（outcome.message 已按类型处理好翻译）
           setTasks((prev) =>
             prev.map((t) =>
               t.id === taskId
-                ? { ...t, downloadStatus: 'download_failed' as const, downloadError: displayError }
+                ? { ...t, downloadStatus: 'download_failed' as const, downloadError: outcome.message }
                 : t,
             ),
           )
-          useDownloadStore.getState().failTask(downloadTaskId, result.errorMessage || '')
         }
       }
     }
