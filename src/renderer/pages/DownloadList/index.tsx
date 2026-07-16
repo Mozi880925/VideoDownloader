@@ -39,15 +39,34 @@ import {
   ExportOutlined,
   FileTextOutlined,
 } from '@ant-design/icons'
-import {
-  useDownloadStore,
-  PLATFORM_OPTIONS,
-  type ActiveTask,
-  type CompletedRecord,
-  type FailedRecord,
-} from '../../store/downloadStore'
+import { create } from 'zustand'
+import { PLATFORM_OPTIONS } from '../../utils/platform'
+import { useActiveTasksStore, type ActiveTask } from '../../store/activeTasksStore'
+import { useHistoryStore } from '../../store/historyStore'
+import { useBatchStore } from '../../store/batchStore'
+import type { CompletedRecord, FailedRecord } from '@shared/types'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useNavStore } from '../../store/navStore'
+
+// ---- 筛选状态（本页私有，不进全局 store）----
+
+interface FilterState {
+  filterKeyword: string
+  filterPlatform: string | null            // null = 全部平台
+  filterDateRange: [number, number] | null // null = 全部时间，[startTs, endTs]（毫秒）
+  setFilterKeyword: (keyword: string) => void
+  setFilterPlatform: (platform: string | null) => void
+  setFilterDateRange: (range: [number, number] | null) => void
+}
+
+const useFilterStore = create<FilterState>((set) => ({
+  filterKeyword: '',
+  filterPlatform: null,
+  filterDateRange: null,
+  setFilterKeyword: (filterKeyword) => set({ filterKeyword }),
+  setFilterPlatform: (filterPlatform) => set({ filterPlatform }),
+  setFilterDateRange: (filterDateRange) => set({ filterDateRange }),
+}))
 import dayjs from 'dayjs'
 import ExtractFramesModal from '../../components/ExtractFramesModal'
 import TranscribeModal from '../../components/TranscribeModal'
@@ -125,7 +144,7 @@ const Thumbnail: React.FC<{ src?: string; size?: number }> = ({ src, size = 80 }
 // ---- 下载中卡片 ----
 
 const ActiveTaskCard: React.FC<{ task: ActiveTask }> = ({ task }) => {
-  const cancelTask = useDownloadStore((s) => s.cancelTask)
+  const cancelTask = useActiveTasksStore((s) => s.removeTask)
   const [slowNetwork, setSlowNetwork] = useState(false)
 
   React.useEffect(() => {
@@ -306,9 +325,9 @@ interface CompletedCardProps {
 }
 
 const CompletedRecordCard: React.FC<CompletedCardProps> = ({ record, selected, onToggle, fileMissing }) => {
-  const removeRecord = useDownloadStore((s) => s.removeRecord)
-  const updateRecordTags = useDownloadStore((s) => s.updateRecordTags)
-  const setFilterKeyword = useDownloadStore((s) => s.setFilterKeyword)
+  const removeRecord = useHistoryStore((s) => s.removeRecord)
+  const updateRecordTags = useHistoryStore((s) => s.updateRecordTags)
+  const setFilterKeyword = useFilterStore((s) => s.setFilterKeyword)
   const [framesOpen, setFramesOpen] = useState(false)
   const [transcribeOpen, setTranscribeOpen] = useState(false)
   const [srtOpen, setSrtOpen] = useState(false)
@@ -472,7 +491,7 @@ function isCookieError(msg: string): boolean {
 }
 
 const FailedRecordCard: React.FC<FailedCardProps> = ({ record, selected, onToggle }) => {
-  const removeFailedRecord = useDownloadStore((s) => s.removeFailedRecord)
+  const removeFailedRecord = useHistoryStore((s) => s.removeFailedRecord)
   const needsLogin = isCookieError(record.errorMessage)
 
   return (
@@ -576,12 +595,12 @@ const FailedRecordCard: React.FC<FailedCardProps> = ({ record, selected, onToggl
 // ---- 筛选工具栏 ----
 
 const FilterBar: React.FC = () => {
-  const filterKeyword = useDownloadStore((s) => s.filterKeyword)
-  const filterPlatform = useDownloadStore((s) => s.filterPlatform)
-  const filterDateRange = useDownloadStore((s) => s.filterDateRange)
-  const setFilterKeyword = useDownloadStore((s) => s.setFilterKeyword)
-  const setFilterPlatform = useDownloadStore((s) => s.setFilterPlatform)
-  const setFilterDateRange = useDownloadStore((s) => s.setFilterDateRange)
+  const filterKeyword = useFilterStore((s) => s.filterKeyword)
+  const filterPlatform = useFilterStore((s) => s.filterPlatform)
+  const filterDateRange = useFilterStore((s) => s.filterDateRange)
+  const setFilterKeyword = useFilterStore((s) => s.setFilterKeyword)
+  const setFilterPlatform = useFilterStore((s) => s.setFilterPlatform)
+  const setFilterDateRange = useFilterStore((s) => s.setFilterDateRange)
 
   const platformOptions = [
     { value: '__all__', label: '全部平台' },
@@ -858,17 +877,17 @@ type TabKey = 'active' | 'completed' | 'failed'
 
 const DownloadList: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('active')
-  const activeTasks = useDownloadStore((s) => s.activeTasks)
-  const completedRecords = useDownloadStore((s) => s.completedRecords)
-  const failedRecords = useDownloadStore((s) => s.failedRecords)
-  const filterKeyword = useDownloadStore((s) => s.filterKeyword)
-  const filterPlatform = useDownloadStore((s) => s.filterPlatform)
-  const filterDateRange = useDownloadStore((s) => s.filterDateRange)
-  const removeRecord = useDownloadStore((s) => s.removeRecord)
-  const removeFailedRecord = useDownloadStore((s) => s.removeFailedRecord)
-  const clearAllCompleted = useDownloadStore((s) => s.clearAllCompleted)
-  const clearAllFailed = useDownloadStore((s) => s.clearAllFailed)
-  const commitBatchUrls = useDownloadStore((s) => s.commitBatchUrls)
+  const activeTasks = useActiveTasksStore((s) => s.activeTasks)
+  const completedRecords = useHistoryStore((s) => s.completedRecords)
+  const failedRecords = useHistoryStore((s) => s.failedRecords)
+  const filterKeyword = useFilterStore((s) => s.filterKeyword)
+  const filterPlatform = useFilterStore((s) => s.filterPlatform)
+  const filterDateRange = useFilterStore((s) => s.filterDateRange)
+  const removeRecord = useHistoryStore((s) => s.removeRecord)
+  const removeFailedRecord = useHistoryStore((s) => s.removeFailedRecord)
+  const clearAllCompleted = useHistoryStore((s) => s.clearAllCompleted)
+  const clearAllFailed = useHistoryStore((s) => s.clearAllFailed)
+  const commitBatchUrls = useBatchStore((s) => s.commitBatchUrls)
 
   const hasFilter = !!filterKeyword || !!filterPlatform || !!filterDateRange
 

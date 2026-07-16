@@ -8,7 +8,7 @@ import {
   DownloadOutlined,
   FolderOpenOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
+import { detectPlatform } from '../../utils/platform'
 import { useSettingsStore } from '../../store/settingsStore'
 import { formatDuration } from '../../utils/format'
 

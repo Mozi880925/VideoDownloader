@@ -21,7 +21,7 @@ import {
   CalendarOutlined,
   EyeOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useBatchStore } from '../../store/batchStore'
 import { formatDuration as fmtDuration, formatUploadDate } from '../../utils/format'
 
 /** 本组件历史展示：空值用 '' */
@@ -65,7 +65,7 @@ const VideoListPicker: React.FC<VideoListPickerProps> = ({
   const [channelName, setChannelName] = useState<string | undefined>(undefined)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  const commitBatchUrls = useDownloadStore((s) => s.commitBatchUrls)
+  const commitBatchUrls = useBatchStore((s) => s.commitBatchUrls)
 
   const handleFetch = useCallback(async (target?: string) => {
     const u = (target ?? url).trim()

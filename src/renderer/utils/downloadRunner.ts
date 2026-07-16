@@ -1,6 +1,7 @@
 import type { SubtitleOptions } from '../../shared/types'
 import { friendlyError } from '../../shared/errorTranslator'
-import { useDownloadStore } from '../store/downloadStore'
+import { useActiveTasksStore } from '../store/activeTasksStore'
+import { useHistoryStore } from '../store/historyStore'
 import { useSettingsStore } from '../store/settingsStore'
 import { detectPlatform } from './platform'
 import { buildOutputPath } from './buildOutputPath'
@@ -64,8 +65,8 @@ export async function checkDiskSpace(
 export async function runDownload(opts: RunDownloadOptions): Promise<DownloadOutcome> {
   const { taskId, url } = opts
 
-  // 加入全局 store（下载列表页展示）
-  useDownloadStore.getState().addTask({
+  // 加入进行中任务 store（下载列表页展示）
+  useActiveTasksStore.getState().addTask({
     taskId,
     url,
     title: opts.title || '未知标题',
@@ -83,13 +84,16 @@ export async function runDownload(opts: RunDownloadOptions): Promise<DownloadOut
     audioOnly: opts.audioOnly,
   })
 
-  const store = useDownloadStore.getState()
+  const active = useActiveTasksStore.getState()
+  const task = active.activeTasks.find((t) => t.taskId === taskId)
 
   if (result.status === 'success') {
     // 未收到过进度即完成 = 本地已有文件的极速秒传
-    const taskInStore = store.activeTasks.find((t) => t.taskId === taskId)
-    const instantSkip = taskInStore ? !taskInStore.hasReceivedProgress : false
-    store.completeTask(taskId, result.data || '')
+    const instantSkip = task ? !task.hasReceivedProgress : false
+    if (task) {
+      active.removeTask(taskId)
+      useHistoryStore.getState().addCompleted(task, result.data || '')
+    }
     const s = useSettingsStore.getState().appSettings
     if (s.enableNotification) {
       window.api
@@ -100,16 +104,20 @@ export async function runDownload(opts: RunDownloadOptions): Promise<DownloadOut
   }
 
   if (result.status === 'cancelled') {
-    store.cancelTask(taskId)
+    active.removeTask(taskId)
     return { kind: 'cancelled' }
+  }
+
+  // failed / timeout / cookie_error → 失败记录（historyStore 内部做 friendlyError）
+  if (task) {
+    active.removeTask(taskId)
+    useHistoryStore.getState().addFailed(task, result.errorMessage || '')
   }
 
   if (result.status === 'cookie_error') {
     // cookie_error 保留原始信息不经 friendlyError 翻译
-    store.failTask(taskId, result.errorMessage || '')
     return { kind: 'cookie_error', message: result.errorMessage || 'Cookie读取失败，请确认 Chrome 已安装且未锁定' }
   }
 
-  store.failTask(taskId, result.errorMessage || '')
   return { kind: 'failed', message: friendlyError(result.errorMessage || '') }
 }

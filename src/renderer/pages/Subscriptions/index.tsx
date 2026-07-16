@@ -3,7 +3,7 @@ import PageTitle from '../../components/PageTitle'
 import type { ChannelSubscription, NewVideoItem, TitleAnalysisResult, ChannelAnalysisResult, VideoTranscript } from '@shared/types'
 import { AutoComplete, Button, Input, Modal, Select, Space, message } from 'antd'
 import { ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
-import { useDownloadStore } from '../../store/downloadStore'
+import { useBatchStore } from '../../store/batchStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { storageGet, storageSet } from '../../utils/storage'
 import VideoListPicker from '../../components/VideoListPicker'
@@ -78,7 +78,7 @@ const Subscriptions: React.FC = () => {
   const llmConfig = useSettingsStore((s) => s.appSettings.llm)
   const interval = useSettingsStore((s) => s.appSettings.subscriptionCheckInterval || '6h')
   const updateSettings = useSettingsStore((s) => s.updateSettings)
-  const commitBatchUrls = useDownloadStore((s) => s.commitBatchUrls)
+  const commitBatchUrls = useBatchStore((s) => s.commitBatchUrls)
 
   const refresh = useCallback(async () => {
     setLoading(true)

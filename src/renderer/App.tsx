@@ -2,7 +2,9 @@ import React, { useEffect } from 'react'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
 import { pageComponents } from './pages'
-import { useDownloadStore } from './store/downloadStore'
+import { useActiveTasksStore } from './store/activeTasksStore'
+import { useHistoryStore } from './store/historyStore'
+import { useBatchStore } from './store/batchStore'
 import { useSettingsStore } from './store/settingsStore'
 import { useNavStore } from './store/navStore'
 import { BG_LAYOUT } from './theme/tokens'
@@ -10,17 +12,16 @@ import { BG_LAYOUT } from './theme/tokens'
 const App: React.FC = () => {
   const currentPage = useNavStore((s) => s.currentPage)
   const setPage = useNavStore((s) => s.setPage)
-  const loadFromDb = useDownloadStore((s) => s.loadFromDb)
-  const dbLoaded = useDownloadStore((s) => s.dbLoaded)
+  const loadFromDb = useHistoryStore((s) => s.loadFromDb)
+  const dbLoaded = useHistoryStore((s) => s.dbLoaded)
 
   // 全局进度监听（常驻，不随页面切换销毁）
   useEffect(() => {
     const remove = window.api.onDownloadProgress((p) => {
-      const store = useDownloadStore.getState()
       // 更新 activeTasks（单视频下载）
-      store.updateProgress(p.taskId, p.progress, p.speed, p.eta, p.filesize)
+      useActiveTasksStore.getState().updateProgress(p.taskId, p.progress, p.speed, p.eta, p.filesize)
       // 更新 batchTasks
-      store.setBatchTasks((prev) =>
+      useBatchStore.getState().setBatchTasks((prev) =>
         prev.map((t) =>
           t.downloadTaskId === p.taskId
             ? { ...t, progress: p.progress, speed: p.speed, eta: p.eta, downloadStatus: 'downloading' as const }

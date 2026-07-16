@@ -34,11 +34,11 @@ import {
   UploadOutlined,
 } from '@ant-design/icons'
 import {
-  useDownloadStore,
+  useBatchStore,
   type BatchTask,
   type ParseStatus,
   type DownloadStatus,
-} from '../../store/downloadStore'
+} from '../../store/batchStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { extractAllUrls } from '../../../shared/extractUrls'
 import { runParse } from '../../utils/videoParse'
@@ -105,16 +105,16 @@ const MiniThumbnail: React.FC<{ src?: string }> = ({ src }) => (
 
 const BatchDownload: React.FC = () => {
   const [inputText, setInputText] = useState('')
-  const tasks = useDownloadStore((s) => s.batchTasks)
-  const setTasks = useDownloadStore((s) => s.setBatchTasks)
-  const isParsing = useDownloadStore((s) => s.batchIsParsing)
-  const setIsParsing = useDownloadStore((s) => s.setBatchIsParsing)
-  const isDownloading = useDownloadStore((s) => s.batchIsDownloading)
-  const setIsDownloading = useDownloadStore((s) => s.setBatchIsDownloading)
+  const tasks = useBatchStore((s) => s.batchTasks)
+  const setTasks = useBatchStore((s) => s.setBatchTasks)
+  const isParsing = useBatchStore((s) => s.batchIsParsing)
+  const setIsParsing = useBatchStore((s) => s.setBatchIsParsing)
+  const isDownloading = useBatchStore((s) => s.batchIsDownloading)
+  const setIsDownloading = useBatchStore((s) => s.setBatchIsDownloading)
   const appSettings = useSettingsStore((s) => s.appSettings)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const subsEnabled = appSettings.subtitles?.enabled ?? false
-  const consumeBatchUrls = useDownloadStore((s) => s.consumeBatchUrls)
+  const consumeBatchUrls = useBatchStore((s) => s.consumeBatchUrls)
   const parseAbortRef = useRef(false)
   const downloadAbortRef = useRef(false)
   const activeDownloadTaskIdRef = useRef<string | null>(null)
