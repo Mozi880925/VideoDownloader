@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
+import PageTitle from '../../components/PageTitle'
+import { PURPLE_GRADIENT } from '../../theme/tokens'
 import {
   Button, Input, Table, Tag, Tooltip, Empty, message, Segmented, Progress,
 } from 'antd'
@@ -11,7 +13,9 @@ import {
   ClearOutlined,
   CloseOutlined,
 } from '@ant-design/icons'
-import { useSettingsStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import { genTaskId } from '../../utils/id'
+import { storageGet, storageSet } from '../../utils/storage'
 import { formatDuration } from '../../utils/format'
 
 // ────────── 类型 ──────────
@@ -73,9 +77,7 @@ const Transcription: React.FC = () => {
   const STORAGE_KEY = 'vd_transcribe_tasks'
   const [tasks, setTasks] = useState<TranscribeTask[]>(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return []
-      const parsed = JSON.parse(raw) as TranscribeTask[]
+      const parsed = storageGet<TranscribeTask[]>(STORAGE_KEY, [])
       // 切页时正在处理中的任务，主进程已经被中断，标记为失败
       return parsed.map(t => t.status === 'processing'
         ? { ...t, status: 'failed' as TranscribeStatus, errorMessage: '页面切换导致中断，请重新转录' }
@@ -85,7 +87,7 @@ const Transcription: React.FC = () => {
 
   // tasks 变化时自动保存
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)) } catch {}
+    storageSet(STORAGE_KEY, tasks)
   }, [tasks])
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
@@ -148,7 +150,7 @@ const Transcription: React.FC = () => {
     const lines = urlText.trim().split('\n').map(l => l.trim()).filter(Boolean)
     if (!lines.length) { message.warning('请输入至少一个 URL'); return }
     const newTasks: TranscribeTask[] = lines.map(url => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: genTaskId(),
       title: url.length > 60 ? url.slice(0, 60) + '…' : url,
       sourceType: 'url',
       sourcePath: url,
@@ -173,7 +175,7 @@ const Transcription: React.FC = () => {
   const handleSubmitFiles = () => {
     if (!pendingFiles.length) { message.warning('请先选择或拖入文件'); return }
     const newTasks: TranscribeTask[] = pendingFiles.map(filePath => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: genTaskId(),
       title: shortPath(filePath),
       sourceType: 'file',
       sourcePath: filePath,
@@ -202,7 +204,7 @@ const Transcription: React.FC = () => {
 
     // 自动把待提交的文件 / URL 转换为任务（省掉手动「添加到队列」步骤）
     const autoFromFiles: TranscribeTask[] = pendingFiles.map(filePath => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: genTaskId(),
       title: shortPath(filePath),
       sourceType: 'file',
       sourcePath: filePath,
@@ -214,7 +216,7 @@ const Transcription: React.FC = () => {
     if (tab === 'url' && urlText.trim()) {
       const lines = urlText.trim().split('\n').map(l => l.trim()).filter(Boolean)
       autoFromUrls = lines.map(url => ({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id: genTaskId(),
         title: url.length > 60 ? url.slice(0, 60) + '…' : url,
         sourceType: 'url',
         sourcePath: url,
@@ -382,15 +384,14 @@ const Transcription: React.FC = () => {
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
-      <h2 style={{
-        fontSize: 24, fontWeight: 700,
-        background: 'linear-gradient(90deg, #7c3aed, #a855f7)',
-        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-        marginBottom: 6,
-      }}>
-        AI 识别字幕
-      </h2>
-      <p style={{ color: '#888', marginBottom: 20 }}>使用本地 Whisper 模型对视频/音频进行语音识别，自动生成 .srt 字幕文件</p>
+      <PageTitle
+        title="AI 识别字幕"
+        size={24}
+        gradient={PURPLE_GRADIENT}
+        style={{ marginBottom: 6 }}
+        subtitle="使用本地 Whisper 模型对视频/音频进行语音识别，自动生成 .srt 字幕文件"
+        subtitleStyle={{ color: '#888', marginBottom: 20, fontSize: 14 }}
+      />
 
       {/* ── 输入区 ── */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 16 }}>

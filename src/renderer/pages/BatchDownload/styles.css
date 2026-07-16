@@ -1,0 +1,5 @@
+/* 批量下载表格行状态底色（AntD Table 行级 rowClassName） */
+.batch-row-success td { background: #f6ffed !important; }
+.batch-row-failed td { background: #fff2f0 !important; }
+.batch-row-downloading td { background: #e6f4ff !important; }
+.batch-row-parse-failed td { background: #fffbe6 !important; }

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import PageTitle from '../../components/PageTitle'
 import { Button, Input, Alert, Spin, message } from 'antd'
 import {
   GlobalOutlined,
@@ -8,7 +9,7 @@ import {
   LoadingOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import { useSettingsStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
 import type { ProxyType, NetworkTestResult, IpInfo } from '../../../shared/types'
 
 // ────────── 代理类型卡片 ──────────
@@ -260,15 +261,13 @@ const Network: React.FC = () => {
 
   return (
     <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
-      <h2 style={{
-        fontSize: 24, fontWeight: 700,
-        background: 'linear-gradient(90deg, #1677ff, #4096ff)',
-        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-        marginBottom: 6,
-      }}>
-        网络
-      </h2>
-      <p style={{ color: '#888', marginBottom: 24 }}>配置下载与解析时使用的代理，并测试常用站点连通性</p>
+      <PageTitle
+        title="网络"
+        size={24}
+        style={{ marginBottom: 6 }}
+        subtitle="配置下载与解析时使用的代理，并测试常用站点连通性"
+        subtitleStyle={{ color: '#888', marginBottom: 24, fontSize: 14 }}
+      />
 
       {/* ── 两栏布局 ── */}
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>

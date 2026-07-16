@@ -22,20 +22,10 @@ import {
   EyeOutlined,
 } from '@ant-design/icons'
 import { useDownloadStore } from '../../store/downloadStore'
+import { formatDuration as fmtDuration, formatUploadDate } from '../../utils/format'
 
-function formatUploadDate(yyyymmdd?: string): string {
-  if (!yyyymmdd || yyyymmdd.length !== 8) return ''
-  return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
-}
-
-function formatDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) return ''
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
+/** 本组件历史展示：空值用 '' */
+const formatDuration = (seconds?: number): string => fmtDuration(seconds, '')
 
 function formatViewCount(n?: number): string {
   if (typeof n !== 'number' || n < 0) return ''

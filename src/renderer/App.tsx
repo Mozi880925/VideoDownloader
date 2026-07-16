@@ -1,39 +1,17 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect } from 'react'
 import TitleBar from './components/TitleBar'
-import Sidebar, { PageKey } from './components/Sidebar'
-import VideoDownload from './pages/VideoDownload'
-import BatchDownload from './pages/BatchDownload'
-import DownloadList from './pages/DownloadList'
-import Subscriptions from './pages/Subscriptions'
-import TopicIdeas from './pages/TopicIdeas'
-import Transcription from './pages/Transcription'
-import SubtitleExtract from './pages/SubtitleExtract'
-import WhisperConfig from './pages/WhisperConfig'
-import Settings from './pages/Settings'
-import Network from './pages/Network'
-import About from './pages/About'
-import { useDownloadStore, useSettingsStore } from './store/downloadStore'
-
-const pageMap: Record<PageKey, React.ReactNode> = {
-  'video-download': <VideoDownload />,
-  'batch-download': <BatchDownload />,
-  'download-list': <DownloadList />,
-  'subscriptions': <Subscriptions />,
-  'topic-ideas': <TopicIdeas />,
-  'transcription': <Transcription />,
-  'subtitle-extract': <SubtitleExtract />,
-  'whisper-config': <WhisperConfig />,
-  'settings': <Settings />,
-  'network': <Network />,
-  'about': <About />,
-}
+import Sidebar from './components/Sidebar'
+import { pageComponents } from './pages'
+import { useDownloadStore } from './store/downloadStore'
+import { useSettingsStore } from './store/settingsStore'
+import { useNavStore } from './store/navStore'
+import { BG_LAYOUT } from './theme/tokens'
 
 const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<PageKey>('video-download')
+  const currentPage = useNavStore((s) => s.currentPage)
+  const setPage = useNavStore((s) => s.setPage)
   const loadFromDb = useDownloadStore((s) => s.loadFromDb)
   const dbLoaded = useDownloadStore((s) => s.dbLoaded)
-  const retryUrl = useSettingsStore((s) => s.retryUrl)
-  const pendingBatchUrls = useDownloadStore((s) => s.pendingBatchUrls)
 
   // 全局进度监听（常驻，不随页面切换销毁）
   useEffect(() => {
@@ -63,33 +41,21 @@ const App: React.FC = () => {
     window.api.settingsSync(useSettingsStore.getState().appSettings).catch(() => {})
   }, [])
 
-  // 监听重新下载请求 → 自动切到单视频下载页
-  useEffect(() => {
-    if (retryUrl) {
-      setCurrentPage('video-download')
-    }
-  }, [retryUrl])
-
-  // 监听批量下载切页请求
-  useEffect(() => {
-    if (pendingBatchUrls.length > 0) {
-      setCurrentPage('batch-download')
-    }
-  }, [pendingBatchUrls])
+  const PageComponent = pageComponents[currentPage]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <TitleBar />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <Sidebar selectedKey={currentPage} onSelect={setCurrentPage} />
+        <Sidebar selectedKey={currentPage} onSelect={setPage} />
         <main
           style={{
             flex: 1,
-            background: '#f5f5f5',
+            background: BG_LAYOUT,
             overflow: 'auto',
           }}
         >
-          {pageMap[currentPage]}
+          <PageComponent />
         </main>
       </div>
     </div>

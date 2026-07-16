@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import PageTitle from '../../components/PageTitle'
 import type { TopicIdea, TopicStatus } from '@shared/types'
 import {
   Card, Button, Input, Tag, Space, Empty, Popconfirm,
@@ -94,16 +95,13 @@ const TopicIdeas: React.FC = () => {
       {ctx}
       <div style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-end', gap: 16 }}>
         <div>
-          <h1 style={{
-            fontSize: 28, fontWeight: 700, margin: 0,
-            background: 'linear-gradient(90deg, #1677ff, #4096ff)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          }}>
-            选题灵感库
-          </h1>
-          <p style={{ color: '#888', marginTop: 6, marginBottom: 0, fontSize: 13 }}>
-            记录选题想法，追踪创作进度
-          </p>
+          <PageTitle
+            title="选题灵感库"
+            size={28}
+            style={{ margin: 0 }}
+            subtitle="记录选题想法，追踪创作进度"
+            subtitleStyle={{ color: '#888', marginTop: 6, marginBottom: 0 }}
+          />
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={openAdd} style={{ marginLeft: 'auto' }}>
           新增选题

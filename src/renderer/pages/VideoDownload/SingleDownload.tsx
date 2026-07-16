@@ -29,21 +29,19 @@ import {
   PlusOutlined,
   ScissorOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore, useSettingsStore, detectPlatform } from '../../store/downloadStore'
+import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import { useNavStore } from '../../store/navStore'
 import { friendlyError } from '../../../shared/errorTranslator'
 import { extractFirstUrl, extractUrls } from '../../../shared/extractUrls'
 import { buildOutputPath } from '../../utils/buildOutputPath'
+import { formatDuration as fmtDuration, formatUploadDate } from '../../utils/format'
+import { genTaskId } from '../../utils/id'
 
 // ---- 工具函数 ----
 
-function formatDuration(seconds: number): string {
-  if (!seconds || seconds <= 0) return '--'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
+/** 本页历史展示：空值用 '--' */
+const formatDuration = (seconds: number): string => fmtDuration(seconds, '--')
 
 function formatFilesize(bytes: number | null): string {
   if (!bytes) return ''
@@ -82,11 +80,6 @@ function formatCount(n: number): string {
   return n.toLocaleString()
 }
 
-function formatUploadDate(yyyymmdd: string): string {
-  if (!/^\d{8}$/.test(yyyymmdd)) return yyyymmdd
-  return `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
-}
-
 function buildFormatLabel(f: VideoFormat): string {
   const parts: string[] = []
   const res = f.resolution && f.resolution !== 'none' ? f.resolution : f.note
@@ -95,10 +88,6 @@ function buildFormatLabel(f: VideoFormat): string {
   if (f.filesize) parts.push(formatFilesize(f.filesize))
   if (f.acodec === 'none') parts.push('(仅视频流)')
   return parts.join('  ')
-}
-
-function generateTaskId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 // ---- 热门网站数据 ----
@@ -159,8 +148,8 @@ const SingleDownload: React.FC = () => {
   }
 
   // ---- 监听"重新下载"请求 ----
-  const retryUrl = useSettingsStore((s) => s.retryUrl)
-  const clearRetryUrl = useSettingsStore((s) => s.clearRetryUrl)
+  const retryUrl = useNavStore((s) => s.retryUrl)
+  const clearRetryUrl = useNavStore((s) => s.clearRetryUrl)
   const appSettings = useSettingsStore((s) => s.appSettings)
 
   // ---- 核心解析逻辑 ----
@@ -219,7 +208,7 @@ const SingleDownload: React.FC = () => {
   // ---- 下载 ----
   const handleDownload = async () => {
     if (!videoInfo) return
-    const taskId = generateTaskId()
+    const taskId = genTaskId()
     currentTaskId.current = taskId
     setDownloading(true)
     setProgress(null)

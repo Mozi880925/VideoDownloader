@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
+import PageTitle from '../../components/PageTitle'
 import type { LlmConfig } from '@shared/types'
 import { Card, Form, Select, Switch, Button, message, Input, InputNumber, Tag, Spin, Segmented, Divider } from 'antd'
 import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined, RobotOutlined, ApiOutlined } from '@ant-design/icons'
-import { useSettingsStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
 
 const SUB_LANG_OPTIONS = [
   { value: 'zh', label: '中文（zh）' },
@@ -175,9 +176,7 @@ const Settings: React.FC = () => {
 
   return (
     <div style={{ padding: 24, maxWidth: 840, margin: '0 auto' }}>
-      <h2 style={{ fontSize: 24, fontWeight: 700, background: 'linear-gradient(90deg, #1677ff, #4096ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 24 }}>
-        设置
-      </h2>
+      <PageTitle title="设置" size={24} style={{ marginBottom: 24 }} />
 
       <div style={{ marginBottom: 20 }}>
         <Segmented

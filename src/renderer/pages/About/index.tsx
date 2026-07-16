@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import PageTitle from '../../components/PageTitle'
 import { Card, Typography, Divider, Tag, List } from 'antd'
 import { CheckCircleOutlined, InfoCircleOutlined } from '@ant-design/icons'
 
@@ -28,9 +29,7 @@ const About: React.FC = () => {
 
   return (
     <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
-      <h2 style={{ fontSize: 24, fontWeight: 700, background: 'linear-gradient(90deg, #1677ff, #4096ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 24 }}>
-        关于
-      </h2>
+      <PageTitle title="关于" size={24} style={{ marginBottom: 24 }} />
 
       <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>

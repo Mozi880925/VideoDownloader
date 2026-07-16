@@ -1,11 +1,11 @@
 import { create } from 'zustand'
 import { friendlyError } from '../../shared/errorTranslator'
 import type { CompletedRecord, FailedRecord } from '../../shared/types'
+import { useNavStore } from './navStore'
 
-// ---- 从同一目录的拆分 store 和 utils 重导出，保持向后兼容 ----
+// ---- 从 utils 重导出，保持向后兼容 ----
 
 export { detectPlatform, PLATFORM_OPTIONS } from '../utils/platform'
-export { useSettingsStore } from './settingsStore'
 
 // ---- 批量下载任务类型（在 store 中定义以便跨组件共享）----
 
@@ -105,7 +105,11 @@ export const useDownloadStore = create<TaskStore>((set, get) => ({
   filterPlatform: null,
   filterDateRange: null,
 
-  commitBatchUrls: (urls) => set({ pendingBatchUrls: urls }),
+  commitBatchUrls: (urls) => {
+    set({ pendingBatchUrls: urls })
+    // 提交批量 URL 的同时切到批量下载页（原先由 App 监听 pendingBatchUrls 切页）
+    useNavStore.getState().setPage('batch-download')
+  },
 
   consumeBatchUrls: () => {
     const urls = get().pendingBatchUrls

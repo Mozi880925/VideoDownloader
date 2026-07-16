@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react'
+import PageTitle from '../../components/PageTitle'
 import { Card, Form, Select, Button, Input, InputNumber, message } from 'antd'
 import { FolderOpenOutlined, AudioOutlined } from '@ant-design/icons'
-import { useSettingsStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
 
 const WhisperConfig: React.FC = () => {
   const [form] = Form.useForm()
@@ -44,15 +45,13 @@ const WhisperConfig: React.FC = () => {
 
   return (
     <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
-      <h2 style={{
-        fontSize: 24, fontWeight: 700,
-        background: 'linear-gradient(90deg, #1677ff, #4096ff)',
-        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-        marginBottom: 6,
-      }}>
-        Whisper 配置
-      </h2>
-      <p style={{ color: '#888', marginBottom: 24 }}>配置本地 Whisper 语音识别引擎，用于 AI 字幕生成</p>
+      <PageTitle
+        title="Whisper 配置"
+        size={24}
+        style={{ marginBottom: 6 }}
+        subtitle="配置本地 Whisper 语音识别引擎，用于 AI 字幕生成"
+        subtitleStyle={{ color: '#888', marginBottom: 24, fontSize: 14 }}
+      />
 
       <Card
         bordered={false}

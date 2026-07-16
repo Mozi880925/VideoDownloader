@@ -56,10 +56,6 @@ function loadSettings(): AppSettings {
 interface SettingsStore {
   appSettings: AppSettings
   updateSettings: (settings: Partial<AppSettings>) => void
-
-  retryUrl: string | null
-  setRetryUrl: (url: string) => void
-  clearRetryUrl: () => void
 }
 
 export const useSettingsStore = create<SettingsStore>((set) => ({
@@ -72,8 +68,4 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     window.api.settingsSync(updated).catch(() => {})
     return { appSettings: updated }
   }),
-
-  retryUrl: null,
-  setRetryUrl: (url) => set({ retryUrl: url }),
-  clearRetryUrl: () => set({ retryUrl: null }),
 }))

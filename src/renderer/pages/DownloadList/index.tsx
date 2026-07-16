@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import PageTitle from '../../components/PageTitle'
+import SharedThumbnail from '../../components/Thumbnail'
 import type { InputRef } from 'antd'
 import {
   Segmented,
@@ -39,12 +41,13 @@ import {
 } from '@ant-design/icons'
 import {
   useDownloadStore,
-  useSettingsStore,
   PLATFORM_OPTIONS,
   type ActiveTask,
   type CompletedRecord,
   type FailedRecord,
 } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import { useNavStore } from '../../store/navStore'
 import dayjs from 'dayjs'
 import ExtractFramesModal from '../../components/ExtractFramesModal'
 import TranscribeModal from '../../components/TranscribeModal'
@@ -113,33 +116,10 @@ function exportRecords(records: CompletedRecord[], format: 'json' | 'csv') {
   }
 }
 
-// ---- 缩略图组件 ----
+// ---- 缩略图（16:9，公共 Thumbnail 的本页封装）----
 
 const Thumbnail: React.FC<{ src?: string; size?: number }> = ({ src, size = 80 }) => (
-  <div
-    style={{
-      width: size * 16 / 9,
-      height: size,
-      borderRadius: 4,
-      overflow: 'hidden',
-      background: '#f0f0f0',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-    }}
-  >
-    {src ? (
-      <img
-        src={src}
-        alt="thumbnail"
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-      />
-    ) : (
-      <VideoCameraOutlined style={{ fontSize: 24, color: '#bbb' }} />
-    )}
-  </div>
+  <SharedThumbnail src={src} width={(size * 16) / 9} height={size} />
 )
 
 // ---- 下载中卡片 ----
@@ -570,7 +550,7 @@ const FailedRecordCard: React.FC<FailedCardProps> = ({ record, selected, onToggl
             size="small"
             title="重新下载"
             onClick={() => {
-              useSettingsStore.getState().setRetryUrl(record.url)
+              useNavStore.getState().gotoRetry(record.url)
             }}
           />
           <Popconfirm
@@ -1006,21 +986,7 @@ const DownloadList: React.FC = () => {
         />
       )}
       {/* 标题 */}
-      <h2
-        style={{
-          fontSize: 26,
-          fontWeight: 700,
-          background: 'linear-gradient(90deg, #1677ff, #4096ff)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          marginBottom: 4,
-        }}
-      >
-        下载列表
-      </h2>
-      <p style={{ color: '#999', marginBottom: 20, fontSize: 13 }}>
-        查看当前下载任务和历史下载记录
-      </p>
+      <PageTitle title="下载列表" subtitle="查看当前下载任务和历史下载记录" />
 
       {/* 搜索 + 平台筛选 */}
       <FilterBar />

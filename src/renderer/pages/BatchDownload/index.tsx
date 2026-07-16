@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
+import PageTitle from '../../components/PageTitle'
+import Thumbnail from '../../components/Thumbnail'
 import {
   Input,
   Button,
@@ -33,21 +35,22 @@ import {
 } from '@ant-design/icons'
 import {
   useDownloadStore,
-  useSettingsStore,
   detectPlatform,
   type BatchTask,
   type ParseStatus,
   type DownloadStatus,
 } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
 import { friendlyError } from '../../../shared/errorTranslator'
 import { buildOutputPath } from '../../utils/buildOutputPath'
 import { extractAllUrls } from '../../../shared/extractUrls'
+import { formatDuration as fmtDuration } from '../../utils/format'
+import { genTaskId } from '../../utils/id'
+import './styles.css'
 
 // ---- 工具函数 ----
 
-function generateId(): string {
-  return `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
+const generateId = (): string => `batch-${genTaskId()}`
 
 const VALID_DOMAINS = [
   'youtube.com', 'youtu.be',
@@ -72,14 +75,8 @@ function parseUrls(text: string): string[] {
   })
 }
 
-function formatDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) return '--'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
+/** 本页历史展示：空值用 '--' */
+const formatDuration = (seconds?: number): string => fmtDuration(seconds, '--')
 
 // ---- 状态标签 ----
 
@@ -99,33 +96,10 @@ const DL_STATUS_CFG: Record<DownloadStatus, { color: string; icon: React.ReactNo
   cancelled:        { color: 'default',    icon: <PauseCircleOutlined />,   label: '已取消' },
 }
 
-// ---- 缩略图 ----
+// ---- 缩略图（公共 Thumbnail 的本页封装）----
 
 const MiniThumbnail: React.FC<{ src?: string }> = ({ src }) => (
-  <div
-    style={{
-      width: 64,
-      height: 36,
-      borderRadius: 3,
-      overflow: 'hidden',
-      background: '#f0f0f0',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-    }}
-  >
-    {src ? (
-      <img
-        src={src}
-        alt="thumb"
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-      />
-    ) : (
-      <VideoCameraOutlined style={{ fontSize: 14, color: '#ccc' }} />
-    )}
-  </div>
+  <Thumbnail src={src} width={64} height={36} radius={3} iconSize={14} iconColor="#ccc" />
 )
 
 // ---- 主组件 ----
@@ -631,19 +605,7 @@ const BatchDownload: React.FC = () => {
       {contextHolder}
 
       {/* 标题 */}
-      <h2
-        style={{
-          fontSize: 26, fontWeight: 700,
-          background: 'linear-gradient(90deg, #1677ff, #4096ff)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-          marginBottom: 4,
-        }}
-      >
-        批量下载
-      </h2>
-      <p style={{ color: '#999', marginBottom: 20, fontSize: 13 }}>
-        批量粘贴视频链接，一键解析并下载
-      </p>
+      <PageTitle title="批量下载" subtitle="批量粘贴视频链接，一键解析并下载" />
 
       {/* 输入区域 */}
       <Card style={{ marginBottom: 16, borderRadius: 8 }}>
@@ -868,12 +830,6 @@ const BatchDownload: React.FC = () => {
         </Card>
       )}
 
-      <style>{`
-        .batch-row-success td { background: #f6ffed !important; }
-        .batch-row-failed td { background: #fff2f0 !important; }
-        .batch-row-downloading td { background: #e6f4ff !important; }
-        .batch-row-parse-failed td { background: #fffbe6 !important; }
-      `}</style>
     </div>
   )
 }

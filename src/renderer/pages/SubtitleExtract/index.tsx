@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
+import PageTitle from '../../components/PageTitle'
+import { PURPLE_GRADIENT } from '../../theme/tokens'
 import { Button, Input, Table, Tag, Tooltip, Empty, message, Segmented } from 'antd'
 import {
   DeleteOutlined,
@@ -6,7 +8,8 @@ import {
   DownloadOutlined,
   FolderOpenOutlined,
 } from '@ant-design/icons'
-import { useDownloadStore, useSettingsStore, detectPlatform } from '../../store/downloadStore'
+import { useDownloadStore, detectPlatform } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
 import { formatDuration } from '../../utils/format'
 
 // ────────── 类型 ──────────
@@ -243,15 +246,14 @@ const SubtitleExtract: React.FC = () => {
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
-      <h2 style={{
-        fontSize: 24, fontWeight: 700,
-        background: 'linear-gradient(90deg, #7c3aed, #a855f7)',
-        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-        marginBottom: 6,
-      }}>
-        字幕提取
-      </h2>
-      <p style={{ color: '#888', marginBottom: 20 }}>从在线视频抓取字幕文件，支持人工字幕与自动生成字幕</p>
+      <PageTitle
+        title="字幕提取"
+        size={24}
+        gradient={PURPLE_GRADIENT}
+        style={{ marginBottom: 6 }}
+        subtitle="从在线视频抓取字幕文件，支持人工字幕与自动生成字幕"
+        subtitleStyle={{ color: '#888', marginBottom: 20, fontSize: 14 }}
+      />
 
       {/* ── 输入区 ── */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 16 }}>

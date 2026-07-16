@@ -3,7 +3,8 @@ import { Segmented } from 'antd'
 import SingleDownload from './SingleDownload'
 import SearchDownload from './SearchDownload'
 import VideoListPicker from '../../components/VideoListPicker'
-import { useSettingsStore } from '../../store/downloadStore'
+import PageTitle from '../../components/PageTitle'
+import { useNavStore } from '../../store/navStore'
 
 type TabKey = 'single' | 'search' | 'playlist'
 
@@ -15,7 +16,7 @@ const TAB_OPTIONS: { label: string; value: TabKey }[] = [
 
 const VideoDownload: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('single')
-  const retryUrl = useSettingsStore((s) => s.retryUrl)
+  const retryUrl = useNavStore((s) => s.retryUrl)
 
   // 如果监听到有重新下载的请求，切回“单视频下载”Tab，以便内层的 SingleDownload 接管它
   useEffect(() => {
@@ -27,21 +28,7 @@ const VideoDownload: React.FC = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* 页面标题 */}
-      <h2
-        style={{
-          fontSize: 26,
-          fontWeight: 700,
-          background: 'linear-gradient(90deg, #1677ff, #4096ff)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          marginBottom: 4,
-        }}
-      >
-        视频下载
-      </h2>
-      <p style={{ color: '#999', marginBottom: 20, fontSize: 13 }}>
-        支持 YouTube、TikTok、Bilibili、小红书、抖音等主流平台
-      </p>
+      <PageTitle title="视频下载" subtitle="支持 YouTube、TikTok、Bilibili、小红书、抖音等主流平台" />
 
       {/* Tab 切换 */}
       <div style={{ marginBottom: 20 }}>

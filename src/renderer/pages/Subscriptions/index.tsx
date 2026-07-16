@@ -1,8 +1,11 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import PageTitle from '../../components/PageTitle'
 import type { ChannelSubscription, NewVideoItem, TitleAnalysisResult, ChannelAnalysisResult, VideoTranscript } from '@shared/types'
 import { AutoComplete, Button, Input, Modal, Select, Space, message } from 'antd'
 import { ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
-import { useDownloadStore, useSettingsStore } from '../../store/downloadStore'
+import { useDownloadStore } from '../../store/downloadStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import { storageGet, storageSet } from '../../utils/storage'
 import VideoListPicker from '../../components/VideoListPicker'
 import type { CheckInterval } from '../../../shared/types'
 import ChannelList from './ChannelList'
@@ -27,11 +30,12 @@ const Subscriptions: React.FC = () => {
   const [sort, setSort] = useState<FeedSort>('date')
   const [viewMode, setViewMode] = useState<FeedViewMode>('list')
   const [paneCollapsed, setPaneCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem('vd_sub_pane_collapsed') === '1' } catch { return false }
+    const v = storageGet<unknown>('vd_sub_pane_collapsed', false)
+    return v === true || v === 1 || v === '1'   // 兼容旧的 '1'/'0' 字符串存储
   })
   const togglePaneCollapsed = () => setPaneCollapsed((prev) => {
     const next = !prev
-    try { localStorage.setItem('vd_sub_pane_collapsed', next ? '1' : '0') } catch {}
+    storageSet('vd_sub_pane_collapsed', next)
     return next
   })
 
@@ -486,19 +490,13 @@ const Subscriptions: React.FC = () => {
       {/* 页头 */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
         <div>
-          <h1
-            style={{
-              fontSize: 28, fontWeight: 700,
-              background: 'linear-gradient(90deg, #1677ff, #4096ff)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-              margin: 0,
-            }}
-          >
-            频道订阅
-          </h1>
-          <p style={{ color: '#888', marginTop: 6, marginBottom: 0 }}>
-            监控对标频道更新，新视频和爆款一目了然
-          </p>
+          <PageTitle
+            title="频道订阅"
+            size={28}
+            style={{ margin: 0 }}
+            subtitle="监控对标频道更新，新视频和爆款一目了然"
+            subtitleStyle={{ color: '#888', marginTop: 6, marginBottom: 0, fontSize: 14 }}
+          />
         </div>
         <Space>
           <span style={{ color: '#888', fontSize: 13 }}>
