@@ -3,6 +3,7 @@ import { testLlm, analyzeTitle, analyzeChannel } from '../services/llm'
 import { saveAnalysis } from '../services/autoAnalysis'
 import { fetchTranscript, getCachedTranscript, getCachedOpeningText } from '../services/transcript'
 import { testYoutubeApiKey } from '../services/youtubeApi'
+import { getUsedToday, DAILY_LIMIT } from '../services/youtubeQuota'
 
 export function registerLlmHandlers(): void {
   // ---- LLM（AI 分析）----
@@ -36,6 +37,7 @@ export function registerLlmHandlers(): void {
 
   // ---- YouTube Data API ----
   handle('ytapi:test', async (_e, key) => testYoutubeApiKey(key))
+  handle('ytapi:get-quota', () => ({ used: getUsedToday(), limit: DAILY_LIMIT }))
 
   // ---- 视频文案（字幕提取入库）----
   handle('transcript:get', (_e, videoId, channelId) => {

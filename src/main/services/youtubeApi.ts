@@ -2,6 +2,7 @@ import { net } from 'electron'
 import type { VideoListItem, VideoListResult } from '../../shared/types'
 import { logInfo, logError } from './logger'
 import { isoToUploadDate } from '../../shared/dateUtils'
+import { charge, markExhausted } from './youtubeQuota'
 
 // ────────── YouTube Data API v3 ──────────
 // 配置 API Key 后，频道视频列表 + 精确播放量改走官方 API（监控排行榜网站同款方案）：
@@ -33,13 +34,18 @@ async function apiGet(
   const qs = new URLSearchParams({ ...params, key }).toString()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 20_000)
+  // 配额记账：请求发出即计费（官方按调用计，与结果无关）
+  charge(endpoint)
   try {
     const resp = await net.fetch(`${API_BASE}/${endpoint}?${qs}`, { signal: controller.signal })
     const json = (await resp.json().catch(() => ({}))) as Record<string, unknown>
     if (!resp.ok) {
       const apiErr = (json as { error?: { message?: string; errors?: { reason?: string }[] } }).error
       const reason = apiErr?.errors?.[0]?.reason ?? ''
-      if (reason === 'quotaExceeded') throw new Error('YouTube API 今日配额已用完（太平洋时间 0 点重置）')
+      if (reason === 'quotaExceeded') {
+        markExhausted()   // 本地账本对齐真实状态
+        throw new Error('YouTube API 今日配额已用完（太平洋时间 0 点重置）')
+      }
       if (resp.status === 400 && /API key/i.test(apiErr?.message ?? '')) throw new Error('API Key 无效，请检查设置')
       if (resp.status === 403) throw new Error(`YouTube API 拒绝请求：${apiErr?.message ?? resp.status}`)
       throw new Error(`YouTube API 返回 ${resp.status}：${(apiErr?.message ?? '').slice(0, 200)}`)

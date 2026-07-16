@@ -97,6 +97,17 @@ function getDbPath(): string {
 const MIGRATIONS: Array<{ v: number; name: string; up: (db: Database.Database) => void }> = [
   { v: 1, name: 'baseline-schema', up: baselineSchema },
   { v: 2, name: 'cleanup-channel-tab-pseudo-videos', up: cleanupTabPseudoVideos },
+  {
+    v: 3,
+    name: 'yt-api-quota-ledger',
+    up: (db) => {
+      // YouTube Data API 当日配额账本（day = 太平洋时间 YYYY-MM-DD，与官方重置周期一致）
+      db.exec(`CREATE TABLE IF NOT EXISTS yt_api_quota (
+        day TEXT PRIMARY KEY,
+        used INTEGER NOT NULL DEFAULT 0
+      )`)
+    },
+  },
 ]
 
 function migrate(db: Database.Database): void {
@@ -582,6 +593,29 @@ export function clearNewVideos(channelId: string): number {
     .prepare("UPDATE channel_new_videos SET status = 'dismissed' WHERE channel_id = ? AND status = 'new'")
     .run(channelId)
   return result.changes
+}
+
+// ---- YouTube API 配额账本 ----
+
+export function addQuotaUsage(day: string, units: number): void {
+  ensureDb()
+    .prepare(`INSERT INTO yt_api_quota (day, used) VALUES (?, ?)
+              ON CONFLICT(day) DO UPDATE SET used = used + excluded.used`)
+    .run(day, units)
+}
+
+export function setQuotaUsage(day: string, units: number): void {
+  ensureDb()
+    .prepare(`INSERT INTO yt_api_quota (day, used) VALUES (?, ?)
+              ON CONFLICT(day) DO UPDATE SET used = excluded.used`)
+    .run(day, units)
+}
+
+export function getQuotaUsage(day: string): number {
+  const row = ensureDb()
+    .prepare('SELECT used FROM yt_api_quota WHERE day = ?')
+    .get(day) as { used: number } | undefined
+  return row?.used ?? 0
 }
 
 export function closeDb(): void {

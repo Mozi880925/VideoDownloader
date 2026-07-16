@@ -47,6 +47,14 @@ const Settings: React.FC = () => {
   const [llmTestResult, setLlmTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [ytApiTesting, setYtApiTesting] = useState(false)
   const [ytApiTestResult, setYtApiTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [ytQuota, setYtQuota] = useState<{ used: number; limit: number } | null>(null)
+
+  // 切到「AI 与数据源」模块时拉取当日配额用量
+  useEffect(() => {
+    if (activeModule === 'ai') {
+      window.api.ytApiGetQuota().then(setYtQuota).catch(() => {})
+    }
+  }, [activeModule])
 
   useEffect(() => {
     form.setFieldsValue(appSettings)
@@ -381,6 +389,11 @@ const Settings: React.FC = () => {
                 {ytApiTestResult && (
                   <span style={{ marginLeft: 12, fontSize: 12, color: ytApiTestResult.ok ? '#52c41a' : '#ff4d4f' }}>
                     {ytApiTestResult.message}
+                  </span>
+                )}
+                {ytQuota && (
+                  <span style={{ marginLeft: 12, fontSize: 12, color: '#888' }}>
+                    今日 API 配额：{ytQuota.used.toLocaleString()} / {ytQuota.limit.toLocaleString()}（太平洋时间 0 点重置）
                   </span>
                 )}
               </Form.Item>

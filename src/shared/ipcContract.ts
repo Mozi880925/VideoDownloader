@@ -120,6 +120,7 @@ export interface IpcInvokeContract {
 
   // ---- YouTube Data API ----
   'ytapi:test': { args: [key: string]; result: { ok: boolean; message: string } }
+  'ytapi:get-quota': { args: []; result: { used: number; limit: number } }
 
   // ---- LLM（AI 分析）----
   'llm:test': { args: [cfg: LlmConfig]; result: { ok: boolean; message: string } }
@@ -192,6 +193,7 @@ export const apiMethods = {
   testNetwork: 'net:test',
   getIpInfo: 'net:ip-info',
   ytApiTest: 'ytapi:test',
+  ytApiGetQuota: 'ytapi:get-quota',
   llmTest: 'llm:test',
   llmAnalyzeTitle: 'llm:analyze-title',
   llmAnalyzeChannel: 'llm:analyze-channel',
