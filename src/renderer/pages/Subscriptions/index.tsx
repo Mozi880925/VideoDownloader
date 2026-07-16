@@ -13,6 +13,9 @@ import VideoFeed, { type FeedFilter, type FeedSort, type FeedViewMode } from './
 import TitleAnalysisModal from './TitleAnalysisModal'
 import TranscriptModal from './TranscriptModal'
 import ChannelAnalysisModal from './ChannelAnalysisModal'
+import { useTitleAnalysis } from './useTitleAnalysis'
+import { useChannelAnalysis } from './useChannelAnalysis'
+import { useTranscript } from './useTranscript'
 
 // ────────── 频道订阅（双栏布局：左侧频道列表 + 右侧视频流） ──────────
 
@@ -48,32 +51,10 @@ const Subscriptions: React.FC = () => {
   const [groupEditSub, setGroupEditSub] = useState<ChannelSubscription | null>(null)
   const [groupVal, setGroupVal] = useState('')
 
-  // ── AI 标题拆解 ──
-  const [analyzeTarget, setAnalyzeTarget] = useState<NewVideoItem | null>(null)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [analysisStage, setAnalysisStage] = useState('')
-  const [analysisUsedOpening, setAnalysisUsedOpening] = useState(false)
-  const [analysisFromCache, setAnalysisFromCache] = useState<{ auto: boolean; createdAt: number } | null>(null)
-  const [analysisResult, setAnalysisResult] = useState<TitleAnalysisResult | null>(null)
-  const [analysisError, setAnalysisError] = useState<string | null>(null)
   // 已有拆解记录的视频键（channelId|videoId），用于角标
   const [analyzedKeys, setAnalyzedKeys] = useState<Set<string>>(new Set())
   // 播放量日增（channelId|videoId → growth24h），快照不足两次的视频没有数据
   const [growthMap, setGrowthMap] = useState<Record<string, number>>({})
-
-  // ── 频道标题规律 ──
-  const [chanAnalyzeTarget, setChanAnalyzeTarget] = useState<ChannelSubscription | null>(null)
-  const [chanAnalyzing, setChanAnalyzing] = useState(false)
-  const [chanResult, setChanResult] = useState<ChannelAnalysisResult | null>(null)
-  const [chanError, setChanError] = useState<string | null>(null)
-  // 本次会话内的频道报告缓存（channelId → result），重开弹窗不重复扣 API
-  const chanCacheRef = React.useRef<Record<string, ChannelAnalysisResult>>({})
-
-  // ── 视频文案 ──
-  const [transcriptTarget, setTranscriptTarget] = useState<NewVideoItem | null>(null)
-  const [transcriptLoading, setTranscriptLoading] = useState(false)
-  const [transcriptData, setTranscriptData] = useState<VideoTranscript | null>(null)
-  const [transcriptError, setTranscriptError] = useState<string | null>(null)
 
   const llmConfig = useSettingsStore((s) => s.appSettings.llm)
   const interval = useSettingsStore((s) => s.appSettings.subscriptionCheckInterval || '6h')
@@ -352,129 +333,13 @@ const Subscriptions: React.FC = () => {
     message.success('已发送到批量下载')
   }
 
-  const runAnalysis = useCallback(async (v: NewVideoItem, force = false) => {
-    if (!llmConfig?.baseUrl?.trim() || !llmConfig?.apiKey?.trim() || !llmConfig?.model?.trim()) {
-      message.warning('请先到「设置 → AI 分析（LLM）」配置 API')
-      return
-    }
-    setAnalyzeTarget(v)
-    setAnalyzing(true)
-    setAnalysisResult(null)
-    setAnalysisError(null)
-    setAnalysisUsedOpening(false)
-    setAnalysisFromCache(null)
-    try {
-      // 0) 已有拆解记录（手动或爆款自动）直接展示，不重复扣 API
-      if (!force) {
-        const cached = await window.api.analysisGet(v.id, v.channelId)
-        if (cached) {
-          setAnalysisResult(cached.result)
-          setAnalysisUsedOpening(cached.usedOpening)
-          setAnalysisFromCache({ auto: cached.auto, createdAt: cached.createdAt })
-          setAnalyzing(false)
-          return
-        }
-      }
-      // 1) 拿开头文案（前 90 秒）：缓存命中直接用，否则现场免下载提一次字幕；失败不阻塞标题分析
-      let openingText: string | undefined
-      setAnalysisStage('正在获取字幕文案（不下载视频）…')
-      try {
-        let opening = await window.api.transcriptOpening(v.id, v.channelId)
-        if (!opening) {
-          const tr = await window.api.transcriptFetch({ id: v.id, channelId: v.channelId, url: v.url, title: v.title })
-          if (tr.status === 'success') {
-            opening = await window.api.transcriptOpening(v.id, v.channelId)
-          }
-        }
-        openingText = opening || undefined
-      } catch { /* 没有字幕时退化为纯标题分析 */ }
-      setAnalysisUsedOpening(!!openingText)
-
-      // 2) 同频道近期视频做对照（排除目标视频自身）
-      const siblings = (videosByChannel[v.channelId] ?? [])
-        .filter((s) => s.id !== v.id)
-        .map((s) => ({ title: s.title, viewCount: s.viewCount }))
-
-      setAnalysisStage(openingText ? 'AI 正在拆解标题和开头钩子…' : 'AI 正在拆解标题（未找到字幕，跳过开头分析）…')
-      const r = await window.api.llmAnalyzeTitle(
-        llmConfig,
-        {
-          title: v.title,
-          viewCount: v.viewCount,
-          channelName: channelNames[v.channelId],
-          siblings,
-          openingText,
-        },
-        { videoId: v.id, channelId: v.channelId },   // 主进程同步入库
-      )
-      if (r.status === 'success') {
-        setAnalysisResult(r.data)
-        setAnalyzedKeys((prev) => new Set(prev).add(`${v.channelId}|${v.id}`))
-      } else {
-        setAnalysisError(r.errorMessage || '分析失败')
-      }
-    } catch (err) {
-      setAnalysisError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setAnalyzing(false)
-      setAnalysisStage('')
-    }
-  }, [llmConfig, videosByChannel, channelNames])
-
-  const runChannelAnalysis = useCallback(async (sub: ChannelSubscription, force = false) => {
-    if (!llmConfig?.baseUrl?.trim() || !llmConfig?.apiKey?.trim() || !llmConfig?.model?.trim()) {
-      message.warning('请先到「设置 → AI 分析（LLM）」配置 API')
-      return
-    }
-    setChanAnalyzeTarget(sub)
-    setChanError(null)
-    // 会话内缓存命中直接展示
-    if (!force && chanCacheRef.current[sub.id]) {
-      setChanResult(chanCacheRef.current[sub.id])
-      setChanAnalyzing(false)
-      return
-    }
-    setChanResult(null)
-    setChanAnalyzing(true)
-    try {
-      const vids = (videosByChannel[sub.id] ?? []).map((v) => ({
-        title: v.title,
-        viewCount: v.viewCount,
-        uploadDate: v.uploadDate,
-      }))
-      const r = await window.api.llmAnalyzeChannel(llmConfig, { channelName: sub.name, videos: vids })
-      if (r.status === 'success') {
-        setChanResult(r.data)
-        chanCacheRef.current[sub.id] = r.data
-      } else {
-        setChanError(r.errorMessage || '分析失败')
-      }
-    } catch (err) {
-      setChanError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setChanAnalyzing(false)
-    }
-  }, [llmConfig, videosByChannel])
-
-  const runTranscript = useCallback(async (v: NewVideoItem, force = false) => {
-    setTranscriptTarget(v)
-    setTranscriptLoading(true)
-    setTranscriptData(null)
-    setTranscriptError(null)
-    try {
-      if (!force) {
-        const cached = await window.api.transcriptGet(v.id, v.channelId)
-        if (cached) { setTranscriptData(cached); return }
-      }
-      const r = await window.api.transcriptFetch({ id: v.id, channelId: v.channelId, url: v.url, title: v.title }, force)
-      if (r.status === 'success') setTranscriptData(r.data)
-      else setTranscriptError(r.errorMessage || '提取失败')
-    } catch (err) {
-      setTranscriptError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setTranscriptLoading(false)
-    }
+  // ── AI 分析三条流程（状态 + 逻辑在各自 hook 内聚）──
+  const onAnalyzed = useCallback((channelId: string, videoId: string) => {
+    setAnalyzedKeys((prev) => new Set(prev).add(`${channelId}|${videoId}`))
   }, [])
+  const titleAnalysis = useTitleAnalysis({ llmConfig, videosByChannel, channelNames, onAnalyzed })
+  const channelAnalysis = useChannelAnalysis({ llmConfig, videosByChannel })
+  const transcript = useTranscript()
 
   const handleDownloadAllNew = () => {
     const urls = scopeVideos.filter((v) => v.status === 'new').map((v) => v.url)
@@ -555,14 +420,14 @@ const Subscriptions: React.FC = () => {
           onSortChange={setSort}
           onViewModeChange={setViewMode}
           onCheck={() => (feedMode === 'all' ? handleCheckAll() : handleCheckOne(selectedChannelId))}
-          onAnalyzeVideo={runAnalysis}
-          onTranscriptVideo={runTranscript}
+          onAnalyzeVideo={titleAnalysis.run}
+          onTranscriptVideo={transcript.run}
           onDownloadVideo={handleDownloadVideo}
           onDownloadAllNew={handleDownloadAllNew}
           onMarkAllRead={handleMarkAllRead}
           onDismiss={handleDismiss}
           onViewAllVideos={selectedSub ? () => setViewSub(selectedSub) : undefined}
-          onAnalyzeChannel={selectedSub ? () => runChannelAnalysis(selectedSub) : undefined}
+          onAnalyzeChannel={selectedSub ? () => channelAnalysis.run(selectedSub) : undefined}
           onOpenAdd={() => setAddOpen(true)}
         />
       </div>
@@ -627,38 +492,38 @@ const Subscriptions: React.FC = () => {
 
       {/* AI 标题拆解 Modal */}
       <TitleAnalysisModal
-        video={analyzeTarget}
-        channelName={analyzeTarget ? channelNames[analyzeTarget.channelId] : undefined}
-        loading={analyzing}
-        loadingText={analysisStage}
-        usedOpening={analysisUsedOpening}
-        fromCache={analysisFromCache}
-        result={analysisResult}
-        error={analysisError}
-        onClose={() => setAnalyzeTarget(null)}
-        onRetry={() => analyzeTarget && runAnalysis(analyzeTarget)}
-        onReanalyze={() => analyzeTarget && runAnalysis(analyzeTarget, true)}
+        video={titleAnalysis.target}
+        channelName={titleAnalysis.target ? channelNames[titleAnalysis.target.channelId] : undefined}
+        loading={titleAnalysis.analyzing}
+        loadingText={titleAnalysis.stage}
+        usedOpening={titleAnalysis.usedOpening}
+        fromCache={titleAnalysis.fromCache}
+        result={titleAnalysis.result}
+        error={titleAnalysis.error}
+        onClose={titleAnalysis.close}
+        onRetry={() => titleAnalysis.target && titleAnalysis.run(titleAnalysis.target)}
+        onReanalyze={() => titleAnalysis.target && titleAnalysis.run(titleAnalysis.target, true)}
       />
 
       {/* 频道标题规律 Modal */}
       <ChannelAnalysisModal
-        channel={chanAnalyzeTarget}
-        videoCount={chanAnalyzeTarget ? (videosByChannel[chanAnalyzeTarget.id] ?? []).length : 0}
-        loading={chanAnalyzing}
-        result={chanResult}
-        error={chanError}
-        onClose={() => setChanAnalyzeTarget(null)}
-        onRerun={() => chanAnalyzeTarget && runChannelAnalysis(chanAnalyzeTarget, true)}
+        channel={channelAnalysis.target}
+        videoCount={channelAnalysis.target ? (videosByChannel[channelAnalysis.target.id] ?? []).length : 0}
+        loading={channelAnalysis.analyzing}
+        result={channelAnalysis.result}
+        error={channelAnalysis.error}
+        onClose={channelAnalysis.close}
+        onRerun={() => channelAnalysis.target && channelAnalysis.run(channelAnalysis.target, true)}
       />
 
       {/* 视频文案 Modal */}
       <TranscriptModal
-        video={transcriptTarget}
-        loading={transcriptLoading}
-        transcript={transcriptData}
-        error={transcriptError}
-        onClose={() => setTranscriptTarget(null)}
-        onRetry={() => transcriptTarget && runTranscript(transcriptTarget, true)}
+        video={transcript.target}
+        loading={transcript.loading}
+        transcript={transcript.data}
+        error={transcript.error}
+        onClose={transcript.close}
+        onRetry={() => transcript.target && transcript.run(transcript.target, true)}
       />
 
       {/* 浏览频道全部视频 Modal */}
