@@ -348,6 +348,59 @@ export interface FailedRecord {
   failedAt: number
 }
 
+// ────────── 蓝海雷达 ──────────
+
+export interface RadarKeyword {
+  id: string
+  keyword: string
+  enabled: boolean
+  createdAt: number
+  lastScannedAt: number   // 0 = 从未扫描
+}
+
+export interface RadarChannel {
+  channelId: string
+  title: string
+  thumbnail: string
+  customUrl: string        // @handle，可能为空
+  country: string          // ISO 国家码，可能为空
+  publishedAt: string      // ISO 建号时间
+  subscriberCount: number
+  videoCount: number
+  viewCount: number
+  firstSeenAt: number      // 首次被雷达发现的时间戳
+  lastUpdatedAt: number    // 最近一次详情刷新时间戳
+  sourceKeyword: string    // 首次发现它的关键词
+  // ── 派生指标（主进程查询时计算）──
+  ageMonths: number        // 频道月龄（建号至今，保留 1 位小数）
+  subsPerMonth: number     // 月均吸粉 = 订阅数 / max(1, 月龄)
+}
+
+export interface RadarScanRun {
+  id: string
+  startedAt: number
+  finishedAt: number       // 0 = 进行中
+  keywordsScanned: number
+  channelsFound: number    // 本次触达的频道数（含已知）
+  newChannels: number      // 本次新入库的频道数
+  quotaSpent: number       // 本次消耗的配额单位
+  status: 'running' | 'done' | 'stopped' | 'failed'
+  errorMessage: string
+}
+
+/** 扫描进度事件载荷 */
+export interface RadarScanProgress {
+  runId: string
+  stage: 'scanning' | 'done' | 'stopped' | 'failed'
+  currentKeyword: string
+  keywordIndex: number     // 当前是第几个关键词（1-based）
+  keywordTotal: number
+  channelsFound: number
+  newChannels: number
+  quotaSpent: number
+  message?: string         // stopped/failed 时的说明
+}
+
 export type TaskStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'cookie_error'
 
 export interface TaskResult<T = unknown> {

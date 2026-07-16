@@ -23,6 +23,18 @@ export function hasYoutubeApiKey(): boolean {
   return !!apiKey
 }
 
+/**
+ * 供其他模块（蓝海雷达等）调用的公开出口：自动注入 key + 配额记账。
+ * 未配置 key 时抛错。
+ */
+export async function ytApiGet(
+  endpoint: string,
+  params: Record<string, string>,
+): Promise<Record<string, unknown>> {
+  if (!apiKey) throw new Error('未配置 YouTube Data API Key，请到「设置 → AI 与数据源」填写')
+  return apiGet(endpoint, params, apiKey)
+}
+
 // URL → 频道 ID 解析结果缓存（进程生命周期内有效，省配额）
 const channelCache = new Map<string, { channelId: string; title: string }>()
 

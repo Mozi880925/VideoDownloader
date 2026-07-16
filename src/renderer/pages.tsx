@@ -11,12 +11,14 @@ import {
   FileTextOutlined,
   SoundOutlined,
   BulbOutlined,
+  RadarChartOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import VideoDownload from './pages/VideoDownload'
 import BatchDownload from './pages/BatchDownload'
 import DownloadList from './pages/DownloadList'
 import Subscriptions from './pages/Subscriptions'
+import Radar from './pages/Radar'
 import TopicIdeas from './pages/TopicIdeas'
 import Transcription from './pages/Transcription'
 import SubtitleExtract from './pages/SubtitleExtract'
@@ -33,6 +35,7 @@ export const pageComponents = {
   'batch-download': BatchDownload,
   'download-list': DownloadList,
   'subscriptions': Subscriptions,
+  'radar': Radar,
   'topic-ideas': TopicIdeas,
   'transcription': Transcription,
   'subtitle-extract': SubtitleExtract,
@@ -57,6 +60,7 @@ export const menuItems: MenuProps['items'] = [
     ],
   },
   { key: 'subscriptions', icon: <BellOutlined />, label: '频道订阅' },
+  { key: 'radar', icon: <RadarChartOutlined />, label: '蓝海雷达' },
   { key: 'topic-ideas', icon: <BulbOutlined />, label: '选题灵感库' },
   {
     key: 'subtitle-group',

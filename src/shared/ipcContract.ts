@@ -36,6 +36,10 @@ import type {
   CompletedRecord,
   FailedRecord,
   AppSettings,
+  RadarKeyword,
+  RadarChannel,
+  RadarScanRun,
+  RadarScanProgress,
 } from './types'
 
 /** 无 taskId 的简单操作结果 */
@@ -68,6 +72,7 @@ export interface IpcInvokeContract {
   'app:get-downloads-path': { args: []; result: string }
   'app:show-notification': { args: [title: string, body: string]; result: void }
   'app:open-logs-folder': { args: []; result: void }
+  'app:open-external': { args: [url: string]; result: void }
   'fs:show-item-in-folder': { args: [filepath: string]; result: void }
   'fs:open-file': { args: [filepath: string]; result: string }
   'fs:read-text-file': { args: [filePath: string]; result: string }
@@ -134,6 +139,17 @@ export interface IpcInvokeContract {
   'transcript:opening': { args: [videoId: string, channelId: string, seconds?: number]; result: string | null }
   'transcript:fetch': { args: [video: { id: string; channelId: string; url: string; title: string }, force?: boolean]; result: OpResult<VideoTranscript> }
 
+  // ---- 蓝海雷达 ----
+  'radar:list-keywords': { args: []; result: RadarKeyword[] }
+  'radar:add-keywords': { args: [keywords: string[]]; result: RadarKeyword[] }
+  'radar:remove-keyword': { args: [id: string]; result: void }
+  'radar:toggle-keyword': { args: [id: string, enabled: boolean]; result: void }
+  'radar:start-scan': { args: []; result: OpResult<{ runId: string }> }
+  'radar:stop-scan': { args: []; result: void }
+  'radar:list-channels': { args: [opts?: { maxAgeMonths?: number; minSubs?: number }]; result: RadarChannel[] }
+  'radar:remove-channel': { args: [channelId: string]; result: void }
+  'radar:list-runs': { args: [limit?: number]; result: RadarScanRun[] }
+
   // ---- 选题灵感库 ----
   'topic:list': { args: []; result: TopicIdea[] }
   'topic:insert': { args: [row: TopicIdea]; result: void }
@@ -155,6 +171,7 @@ export const apiMethods = {
   getDownloadsPath: 'app:get-downloads-path',
   showNotification: 'app:show-notification',
   openLogsFolder: 'app:open-logs-folder',
+  openExternal: 'app:open-external',
   showItemInFolder: 'fs:show-item-in-folder',
   openFile: 'fs:open-file',
   readTextFile: 'fs:read-text-file',
@@ -202,6 +219,15 @@ export const apiMethods = {
   transcriptGet: 'transcript:get',
   transcriptOpening: 'transcript:opening',
   transcriptFetch: 'transcript:fetch',
+  radarListKeywords: 'radar:list-keywords',
+  radarAddKeywords: 'radar:add-keywords',
+  radarRemoveKeyword: 'radar:remove-keyword',
+  radarToggleKeyword: 'radar:toggle-keyword',
+  radarStartScan: 'radar:start-scan',
+  radarStopScan: 'radar:stop-scan',
+  radarListChannels: 'radar:list-channels',
+  radarRemoveChannel: 'radar:remove-channel',
+  radarListRuns: 'radar:list-runs',
   topicList: 'topic:list',
   topicInsert: 'topic:insert',
   topicUpdate: 'topic:update',
@@ -222,6 +248,7 @@ export interface IpcEventContract {
   'event:cookies-path-updated': [filePath: string]
   'event:sub-scheduler-tick': [info: { totalNew: number }]
   'event:analysis-auto-done': [info: { channelId: string; channelName: string; videoId: string; videoTitle: string }]
+  'event:radar-scan-progress': [progress: RadarScanProgress]
 }
 
 /** 渲染端事件订阅方法名 → 事件通道名 */
@@ -231,6 +258,7 @@ export const listenerMethods = {
   onCookiesPathUpdated: 'event:cookies-path-updated',
   onSubSchedulerTick: 'event:sub-scheduler-tick',
   onAnalysisAutoDone: 'event:analysis-auto-done',
+  onRadarScanProgress: 'event:radar-scan-progress',
 } as const satisfies Record<string, keyof IpcEventContract>
 
 /** window.api 的事件订阅部分：注册回调，返回取消监听函数 */

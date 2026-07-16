@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import { app } from 'electron'
-import type { CompletedRecord, FailedRecord } from '../../shared/types'
+import type { CompletedRecord, FailedRecord, RadarKeyword, RadarChannel, RadarScanRun } from '../../shared/types'
 import { logInfo, logError } from './logger'
 
 // ---- 类型 ----
@@ -106,6 +106,55 @@ const MIGRATIONS: Array<{ v: number; name: string; up: (db: Database.Database) =
         day TEXT PRIMARY KEY,
         used INTEGER NOT NULL DEFAULT 0
       )`)
+    },
+  },
+  {
+    v: 4,
+    name: 'radar-tables',
+    up: (db) => {
+      // 蓝海雷达：关键词表 / 频道库 / 频道快照（未来增速计算用）/ 扫描记录
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS radar_keywords (
+          id TEXT PRIMARY KEY,
+          keyword TEXT NOT NULL UNIQUE,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL DEFAULT 0,
+          last_scanned_at INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS radar_channels (
+          channel_id TEXT PRIMARY KEY,
+          title TEXT NOT NULL DEFAULT '',
+          thumbnail TEXT NOT NULL DEFAULT '',
+          custom_url TEXT NOT NULL DEFAULT '',
+          country TEXT NOT NULL DEFAULT '',
+          published_at TEXT NOT NULL DEFAULT '',
+          subscriber_count INTEGER NOT NULL DEFAULT 0,
+          video_count INTEGER NOT NULL DEFAULT 0,
+          view_count INTEGER NOT NULL DEFAULT 0,
+          first_seen_at INTEGER NOT NULL DEFAULT 0,
+          last_updated_at INTEGER NOT NULL DEFAULT 0,
+          source_keyword TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS radar_channel_snapshots (
+          channel_id TEXT NOT NULL,
+          subscriber_count INTEGER NOT NULL DEFAULT 0,
+          view_count INTEGER NOT NULL DEFAULT 0,
+          video_count INTEGER NOT NULL DEFAULT 0,
+          captured_at INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_radar_snapshots ON radar_channel_snapshots(channel_id, captured_at);
+        CREATE TABLE IF NOT EXISTS radar_scan_runs (
+          id TEXT PRIMARY KEY,
+          started_at INTEGER NOT NULL DEFAULT 0,
+          finished_at INTEGER NOT NULL DEFAULT 0,
+          keywords_scanned INTEGER NOT NULL DEFAULT 0,
+          channels_found INTEGER NOT NULL DEFAULT 0,
+          new_channels INTEGER NOT NULL DEFAULT 0,
+          quota_spent INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'running',
+          error_message TEXT NOT NULL DEFAULT ''
+        );
+      `)
     },
   },
 ]
@@ -616,6 +665,231 @@ export function getQuotaUsage(day: string): number {
     .prepare('SELECT used FROM yt_api_quota WHERE day = ?')
     .get(day) as { used: number } | undefined
   return row?.used ?? 0
+}
+
+// ---- 蓝海雷达 ----
+
+interface RadarKeywordRow {
+  id: string
+  keyword: string
+  enabled: number
+  created_at: number
+  last_scanned_at: number
+}
+
+interface RadarChannelRow {
+  channel_id: string
+  title: string
+  thumbnail: string
+  custom_url: string
+  country: string
+  published_at: string
+  subscriber_count: number
+  video_count: number
+  view_count: number
+  first_seen_at: number
+  last_updated_at: number
+  source_keyword: string
+}
+
+interface RadarScanRunRow {
+  id: string
+  started_at: number
+  finished_at: number
+  keywords_scanned: number
+  channels_found: number
+  new_channels: number
+  quota_spent: number
+  status: string
+  error_message: string
+}
+
+function rowToRadarKeyword(r: RadarKeywordRow): RadarKeyword {
+  return {
+    id: r.id,
+    keyword: r.keyword,
+    enabled: r.enabled === 1,
+    createdAt: r.created_at,
+    lastScannedAt: r.last_scanned_at,
+  }
+}
+
+/** 频道月龄（建号至今，保留 1 位小数）；建号时间非法时返回 0 */
+function channelAgeMonths(publishedAt: string): number {
+  const t = Date.parse(publishedAt)
+  if (isNaN(t)) return 0
+  const months = (Date.now() - t) / (30.44 * 24 * 3600 * 1000)
+  return Math.max(0, Math.round(months * 10) / 10)
+}
+
+function rowToRadarChannel(r: RadarChannelRow): RadarChannel {
+  const ageMonths = channelAgeMonths(r.published_at)
+  return {
+    channelId: r.channel_id,
+    title: r.title,
+    thumbnail: r.thumbnail,
+    customUrl: r.custom_url,
+    country: r.country,
+    publishedAt: r.published_at,
+    subscriberCount: r.subscriber_count,
+    videoCount: r.video_count,
+    viewCount: r.view_count,
+    firstSeenAt: r.first_seen_at,
+    lastUpdatedAt: r.last_updated_at,
+    sourceKeyword: r.source_keyword,
+    ageMonths,
+    subsPerMonth: Math.round(r.subscriber_count / Math.max(1, ageMonths)),
+  }
+}
+
+export function listRadarKeywords(): RadarKeyword[] {
+  return (ensureDb()
+    .prepare('SELECT * FROM radar_keywords ORDER BY created_at ASC')
+    .all() as RadarKeywordRow[]).map(rowToRadarKeyword)
+}
+
+export function insertRadarKeyword(id: string, keyword: string): RadarKeyword | null {
+  const now = Date.now()
+  const result = ensureDb()
+    .prepare(`INSERT OR IGNORE INTO radar_keywords (id, keyword, enabled, created_at, last_scanned_at)
+              VALUES (?, ?, 1, ?, 0)`)
+    .run(id, keyword, now)
+  if (result.changes === 0) return null   // 关键词已存在
+  return { id, keyword, enabled: true, createdAt: now, lastScannedAt: 0 }
+}
+
+export function deleteRadarKeyword(id: string): void {
+  ensureDb().prepare('DELETE FROM radar_keywords WHERE id = ?').run(id)
+}
+
+export function setRadarKeywordEnabled(id: string, enabled: boolean): void {
+  ensureDb().prepare('UPDATE radar_keywords SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id)
+}
+
+export function touchRadarKeywordScanned(id: string): void {
+  ensureDb().prepare('UPDATE radar_keywords SET last_scanned_at = ? WHERE id = ?').run(Date.now(), id)
+}
+
+/**
+ * upsert 一个雷达频道；返回是否为新入库。
+ * 已存在时刷新统计与 last_updated_at，保留 first_seen_at / source_keyword。
+ */
+export function upsertRadarChannel(c: {
+  channelId: string
+  title: string
+  thumbnail: string
+  customUrl: string
+  country: string
+  publishedAt: string
+  subscriberCount: number
+  videoCount: number
+  viewCount: number
+  sourceKeyword: string
+}): boolean {
+  const db = ensureDb()
+  const now = Date.now()
+  const exists = db.prepare('SELECT 1 FROM radar_channels WHERE channel_id = ?').get(c.channelId)
+  db.prepare(`
+    INSERT INTO radar_channels
+      (channel_id, title, thumbnail, custom_url, country, published_at,
+       subscriber_count, video_count, view_count, first_seen_at, last_updated_at, source_keyword)
+    VALUES (@channelId, @title, @thumbnail, @customUrl, @country, @publishedAt,
+            @subscriberCount, @videoCount, @viewCount, @now, @now, @sourceKeyword)
+    ON CONFLICT(channel_id) DO UPDATE SET
+      title = excluded.title, thumbnail = excluded.thumbnail, custom_url = excluded.custom_url,
+      country = excluded.country, published_at = excluded.published_at,
+      subscriber_count = excluded.subscriber_count, video_count = excluded.video_count,
+      view_count = excluded.view_count, last_updated_at = excluded.last_updated_at
+  `).run({ ...c, now })
+  return !exists
+}
+
+/** 记录频道快照（同一频道 12 小时内只留一个，避免同日重复扫描刷数据） */
+export function insertRadarSnapshot(channelId: string, subscriberCount: number, viewCount: number, videoCount: number): void {
+  const db = ensureDb()
+  const recent = db
+    .prepare('SELECT 1 FROM radar_channel_snapshots WHERE channel_id = ? AND captured_at > ? LIMIT 1')
+    .get(channelId, Date.now() - 12 * 3600 * 1000)
+  if (recent) return
+  db.prepare(`INSERT INTO radar_channel_snapshots (channel_id, subscriber_count, view_count, video_count, captured_at)
+              VALUES (?, ?, ?, ?, ?)`)
+    .run(channelId, subscriberCount, viewCount, videoCount, Date.now())
+}
+
+export function listRadarChannels(opts?: { maxAgeMonths?: number; minSubs?: number }): RadarChannel[] {
+  const rows = ensureDb()
+    .prepare('SELECT * FROM radar_channels ORDER BY last_updated_at DESC')
+    .all() as RadarChannelRow[]
+  let channels = rows.map(rowToRadarChannel)
+  if (opts?.maxAgeMonths != null) {
+    channels = channels.filter((c) => c.ageMonths > 0 && c.ageMonths <= opts.maxAgeMonths!)
+  }
+  if (opts?.minSubs != null) {
+    channels = channels.filter((c) => c.subscriberCount >= opts.minSubs!)
+  }
+  return channels
+}
+
+export function deleteRadarChannel(channelId: string): void {
+  const db = ensureDb()
+  db.transaction(() => {
+    db.prepare('DELETE FROM radar_channels WHERE channel_id = ?').run(channelId)
+    db.prepare('DELETE FROM radar_channel_snapshots WHERE channel_id = ?').run(channelId)
+  })()
+}
+
+export function insertRadarScanRun(id: string): void {
+  ensureDb()
+    .prepare(`INSERT INTO radar_scan_runs (id, started_at, status) VALUES (?, ?, 'running')`)
+    .run(id, Date.now())
+}
+
+export function updateRadarScanRun(id: string, fields: {
+  finishedAt?: number
+  keywordsScanned?: number
+  channelsFound?: number
+  newChannels?: number
+  quotaSpent?: number
+  status?: string
+  errorMessage?: string
+}): void {
+  ensureDb().prepare(`
+    UPDATE radar_scan_runs SET
+      finished_at = COALESCE(@finishedAt, finished_at),
+      keywords_scanned = COALESCE(@keywordsScanned, keywords_scanned),
+      channels_found = COALESCE(@channelsFound, channels_found),
+      new_channels = COALESCE(@newChannels, new_channels),
+      quota_spent = COALESCE(@quotaSpent, quota_spent),
+      status = COALESCE(@status, status),
+      error_message = COALESCE(@errorMessage, error_message)
+    WHERE id = @id
+  `).run({
+    id,
+    finishedAt: fields.finishedAt ?? null,
+    keywordsScanned: fields.keywordsScanned ?? null,
+    channelsFound: fields.channelsFound ?? null,
+    newChannels: fields.newChannels ?? null,
+    quotaSpent: fields.quotaSpent ?? null,
+    status: fields.status ?? null,
+    errorMessage: fields.errorMessage ?? null,
+  })
+}
+
+export function listRadarScanRuns(limit = 20): RadarScanRun[] {
+  const rows = ensureDb()
+    .prepare('SELECT * FROM radar_scan_runs ORDER BY started_at DESC LIMIT ?')
+    .all(limit) as RadarScanRunRow[]
+  return rows.map((r) => ({
+    id: r.id,
+    startedAt: r.started_at,
+    finishedAt: r.finished_at,
+    keywordsScanned: r.keywords_scanned,
+    channelsFound: r.channels_found,
+    newChannels: r.new_channels,
+    quotaSpent: r.quota_spent,
+    status: r.status as RadarScanRun['status'],
+    errorMessage: r.error_message,
+  }))
 }
 
 export function closeDb(): void {

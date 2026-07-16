@@ -21,6 +21,13 @@ export function registerFsHandlers(): void {
     shell.openPath(logDir)
   })
 
+  // 用系统浏览器打开外部链接（仅允许 http/https）
+  handle('app:open-external', (_event, url) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url)
+    }
+  })
+
   // 在系统文件管理器中显示文件
   handle('fs:show-item-in-folder', (_event, filepath) => {
     shell.showItemInFolder(filepath)
