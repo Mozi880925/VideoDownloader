@@ -40,16 +40,20 @@ function buildEndpoint(baseUrl: string): string {
   return base + '/chat/completions'
 }
 
-async function chatCompletion(
+export async function chatCompletion(
   cfg: LlmConfig,
   messages: { role: 'system' | 'user'; content: string }[],
   timeoutMs = 90_000,
+  signal?: AbortSignal,
 ): Promise<string> {
   const endpoint = buildEndpoint(cfg.baseUrl)
   logInfo(`[llm] POST ${endpoint} model=${cfg.model}`)
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  // 外部取消信号（提纯任务取消时中止当前请求）
+  const onAbort = () => controller.abort()
+  signal?.addEventListener('abort', onAbort, { once: true })
   try {
     const resp = await net.fetch(endpoint, {
       method: 'POST',
@@ -78,11 +82,13 @@ async function chatCompletion(
     return content
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
+      if (signal?.aborted) throw new Error('[CANCELLED]')
       throw new Error(`请求超时（${Math.round(timeoutMs / 1000)}s）`)
     }
     throw err
   } finally {
     clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
   }
 }
 

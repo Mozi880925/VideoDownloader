@@ -9,6 +9,7 @@ import { registerNetworkHandlers } from './network'
 import { registerLlmHandlers } from './llm'
 import { registerCookiesHandlers } from './cookies'
 import { registerRadarHandlers } from './radar'
+import { registerDistillHandlers } from './distill'
 import { registerSettingsHandlers, bootstrapSettingsConsumers } from './settings'
 
 /** 注册全部 IPC handler（在 app.whenReady 后调用一次） */
@@ -23,6 +24,7 @@ export function registerAllIpc(): void {
   registerLlmHandlers()
   registerCookiesHandlers()
   registerRadarHandlers()
+  registerDistillHandlers()
   registerSettingsHandlers()
   bootstrapSettingsConsumers()
 }

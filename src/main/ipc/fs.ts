@@ -93,4 +93,24 @@ export function registerFsHandlers(): void {
     }
     return undefined
   })
+
+  // 选择保存路径（另存为对话框）
+  handle('fs:select-save-path', async (event, defaultFileName, filters) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return undefined
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: defaultFileName,
+      filters: filters ?? [{ name: 'All Files', extensions: ['*'] }],
+    })
+    if (!result.canceled && result.filePath) {
+      return result.filePath
+    }
+    return undefined
+  })
+
+  // 写文本文件（自动创建父目录）
+  handle('fs:write-text-file', async (_event, filePath, content) => {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.promises.writeFile(filePath, content, 'utf-8')
+  })
 }

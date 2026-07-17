@@ -149,6 +149,7 @@ export interface AppSettings {
   llm?: LlmConfig                  // AI 分析用的 OpenAI 兼容 API 配置
   autoAnalyzeHot?: boolean         // 检查订阅时自动 AI 拆解爆款新视频，默认 false
   youtubeApiKey?: string           // YouTube Data API v3 Key，配置后订阅检查改走官方 API（精确播放量）
+  feishu?: FeishuConfig            // 飞书自建应用凭据（提纯稿交付飞书文档用）
 }
 
 /** 视频播放量增速（基于快照计算的日增） */
@@ -399,6 +400,58 @@ export interface RadarScanProgress {
   newChannels: number
   quotaSpent: number
   message?: string         // stopped/failed 时的说明
+}
+
+// ────────── AI 提纯整理 ──────────
+
+export type DistillSourceType = 'whisper-srt' | 'subtitle-srt' | 'subscription'
+export type DistillStatus = 'running' | 'done' | 'failed' | 'cancelled'
+
+/** 发起提纯的输入（srt 两类来源传 srtPath；订阅文案传 videoId+channelId） */
+export interface DistillStartInput {
+  sourceType: DistillSourceType
+  title: string
+  srtPath?: string
+  videoId?: string
+  channelId?: string
+}
+
+/** 提纯稿元数据（列表用，不含正文） */
+export interface DistilledArticleMeta {
+  id: string
+  title: string
+  sourceType: DistillSourceType
+  sourceRef: string
+  sourceCharCount: number
+  chunkTotal: number
+  chunkDone: number
+  status: DistillStatus
+  model: string
+  durationMs: number
+  errorMessage: string
+  feishuUrl: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DistilledArticle extends DistilledArticleMeta {
+  markdown: string
+}
+
+/** 提纯进度事件载荷 */
+export interface DistillProgress {
+  articleId: string
+  stage: 'preparing' | 'distilling' | 'done' | 'failed' | 'cancelled'
+  chunkIndex: number   // 1-based，当前在跑第几块
+  chunkTotal: number
+  message?: string     // failed/cancelled 说明
+}
+
+// ────────── 飞书交付 ──────────
+
+export interface FeishuConfig {
+  appId: string
+  appSecret: string
 }
 
 export type TaskStatus = 'success' | 'failed' | 'timeout' | 'cancelled' | 'cookie_error'

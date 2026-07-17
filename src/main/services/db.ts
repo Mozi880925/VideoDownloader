@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import { app } from 'electron'
-import type { CompletedRecord, FailedRecord, RadarKeyword, RadarChannel, RadarScanRun } from '../../shared/types'
+import type { CompletedRecord, FailedRecord, RadarKeyword, RadarChannel, RadarScanRun, DistilledArticle, DistilledArticleMeta } from '../../shared/types'
 import { logInfo, logError } from './logger'
 
 // ---- 类型 ----
@@ -157,6 +157,32 @@ const MIGRATIONS: Array<{ v: number; name: string; up: (db: Database.Database) =
       `)
     },
   },
+  {
+    v: 5,
+    name: 'distilled-articles',
+    up: (db) => {
+      // AI 提纯稿：转录稿/字幕经 LLM 分块提纯后的分享式原文（chunks_json 为断点续跑真源）
+      db.exec(`CREATE TABLE IF NOT EXISTS distilled_articles (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT '',
+        source_type TEXT NOT NULL DEFAULT '',
+        source_ref TEXT NOT NULL DEFAULT '',
+        source_char_count INTEGER NOT NULL DEFAULT 0,
+        source_text_hash TEXT NOT NULL DEFAULT '',
+        markdown TEXT NOT NULL DEFAULT '',
+        chunks_json TEXT NOT NULL DEFAULT '[]',
+        chunk_total INTEGER NOT NULL DEFAULT 0,
+        chunk_done INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'running',
+        model TEXT NOT NULL DEFAULT '',
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT NOT NULL DEFAULT '',
+        feishu_url TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT 0
+      )`)
+    },
+  },
 ]
 
 function migrate(db: Database.Database): void {
@@ -180,6 +206,9 @@ export function initDb(): void {
   db.pragma('journal_mode = WAL')
 
   migrate(db)
+
+  // 进程崩溃兜底：上次残留的 running 提纯任务标为 failed（可重试续跑）
+  failStaleDistills()
 
   logInfo('[db] database initialized')
 }
@@ -642,6 +671,149 @@ export function clearNewVideos(channelId: string): number {
     .prepare("UPDATE channel_new_videos SET status = 'dismissed' WHERE channel_id = ? AND status = 'new'")
     .run(channelId)
   return result.changes
+}
+
+// ---- AI 提纯稿 ----
+
+interface DistilledArticleRow {
+  id: string
+  title: string
+  source_type: string
+  source_ref: string
+  source_char_count: number
+  source_text_hash: string
+  markdown: string
+  chunks_json: string
+  chunk_total: number
+  chunk_done: number
+  status: string
+  model: string
+  duration_ms: number
+  error_message: string
+  feishu_url: string
+  created_at: number
+  updated_at: number
+}
+
+function rowToArticleMeta(r: DistilledArticleRow): DistilledArticleMeta {
+  return {
+    id: r.id,
+    title: r.title,
+    sourceType: r.source_type as DistilledArticleMeta['sourceType'],
+    sourceRef: r.source_ref,
+    sourceCharCount: r.source_char_count,
+    chunkTotal: r.chunk_total,
+    chunkDone: r.chunk_done,
+    status: r.status as DistilledArticleMeta['status'],
+    model: r.model,
+    durationMs: r.duration_ms,
+    errorMessage: r.error_message,
+    feishuUrl: r.feishu_url,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }
+}
+
+export function insertDistilledArticle(a: {
+  id: string
+  title: string
+  sourceType: string
+  sourceRef: string
+  sourceCharCount: number
+  sourceTextHash: string
+  chunkTotal: number
+  model: string
+}): void {
+  const now = Date.now()
+  ensureDb().prepare(`
+    INSERT INTO distilled_articles
+      (id, title, source_type, source_ref, source_char_count, source_text_hash,
+       chunk_total, status, model, created_at, updated_at)
+    VALUES (@id, @title, @sourceType, @sourceRef, @sourceCharCount, @sourceTextHash,
+            @chunkTotal, 'running', @model, ${now}, ${now})
+  `).run(a)
+}
+
+export function updateDistilledArticle(id: string, fields: {
+  markdown?: string
+  chunksJson?: string
+  chunkDone?: number
+  status?: string
+  durationMs?: number
+  errorMessage?: string
+  feishuUrl?: string
+}): void {
+  ensureDb().prepare(`
+    UPDATE distilled_articles SET
+      markdown = COALESCE(@markdown, markdown),
+      chunks_json = COALESCE(@chunksJson, chunks_json),
+      chunk_done = COALESCE(@chunkDone, chunk_done),
+      status = COALESCE(@status, status),
+      duration_ms = COALESCE(@durationMs, duration_ms),
+      error_message = COALESCE(@errorMessage, error_message),
+      feishu_url = COALESCE(@feishuUrl, feishu_url),
+      updated_at = ${Date.now()}
+    WHERE id = @id
+  `).run({
+    id,
+    markdown: fields.markdown ?? null,
+    chunksJson: fields.chunksJson ?? null,
+    chunkDone: fields.chunkDone ?? null,
+    status: fields.status ?? null,
+    durationMs: fields.durationMs ?? null,
+    errorMessage: fields.errorMessage ?? null,
+    feishuUrl: fields.feishuUrl ?? null,
+  })
+}
+
+/** 列表用元数据（不含 markdown/chunks_json 正文，控制传输量） */
+export function listDistilledArticles(): DistilledArticleMeta[] {
+  const rows = ensureDb().prepare(`
+    SELECT id, title, source_type, source_ref, source_char_count, source_text_hash,
+           '' AS markdown, '[]' AS chunks_json, chunk_total, chunk_done, status,
+           model, duration_ms, error_message, feishu_url, created_at, updated_at
+    FROM distilled_articles ORDER BY created_at DESC
+  `).all() as DistilledArticleRow[]
+  return rows.map(rowToArticleMeta)
+}
+
+export function getDistilledArticle(id: string): DistilledArticle | null {
+  const row = ensureDb()
+    .prepare('SELECT * FROM distilled_articles WHERE id = ?')
+    .get(id) as DistilledArticleRow | undefined
+  if (!row) return null
+  return { ...rowToArticleMeta(row), markdown: row.markdown }
+}
+
+/** distill 服务内部用：取断点续跑所需的完整行 */
+export function getDistilledArticleRaw(id: string): {
+  meta: DistilledArticleMeta
+  chunks: string[]
+  sourceTextHash: string
+} | null {
+  const row = ensureDb()
+    .prepare('SELECT * FROM distilled_articles WHERE id = ?')
+    .get(id) as DistilledArticleRow | undefined
+  if (!row) return null
+  let chunks: string[] = []
+  try { chunks = JSON.parse(row.chunks_json) as string[] } catch { /* 保持空数组 */ }
+  return { meta: rowToArticleMeta(row), chunks, sourceTextHash: row.source_text_hash }
+}
+
+export function deleteDistilledArticle(id: string): void {
+  ensureDb().prepare('DELETE FROM distilled_articles WHERE id = ?').run(id)
+}
+
+/** 应用启动兜底：上次进程退出时残留的 running 任务标记为 failed */
+export function failStaleDistills(): void {
+  const result = ensureDb()
+    .prepare(`UPDATE distilled_articles SET status = 'failed',
+              error_message = '应用重启导致任务中断，可点击重试续跑', updated_at = ${Date.now()}
+              WHERE status = 'running'`)
+    .run()
+  if (result.changes > 0) {
+    logInfo(`[db] marked ${result.changes} stale running distill(s) as failed`)
+  }
 }
 
 // ---- YouTube API 配额账本 ----

@@ -40,6 +40,11 @@ import type {
   RadarChannel,
   RadarScanRun,
   RadarScanProgress,
+  DistillStartInput,
+  DistilledArticle,
+  DistilledArticleMeta,
+  DistillProgress,
+  FeishuConfig,
 } from './types'
 
 /** 无 taskId 的简单操作结果 */
@@ -80,6 +85,8 @@ export interface IpcInvokeContract {
   'fs:get-disk-space': { args: [dirPath: string]; result: { available: number; total: number } }
   'fs:select-directory': { args: [defaultPath?: string]; result: string | undefined }
   'fs:select-file': { args: [filters?: { name: string; extensions: string[] }[]]; result: string | undefined }
+  'fs:select-save-path': { args: [defaultFileName?: string, filters?: { name: string; extensions: string[] }[]]; result: string | undefined }
+  'fs:write-text-file': { args: [filePath: string, content: string]; result: void }
 
   // ---- 下载记录（DB）----
   'db:get-completed-records': { args: []; result: CompletedRecord[] }
@@ -149,6 +156,18 @@ export interface IpcInvokeContract {
   'radar:list-channels': { args: [opts?: { maxAgeMonths?: number; minSubs?: number }]; result: RadarChannel[] }
   'radar:remove-channel': { args: [channelId: string]; result: void }
   'radar:list-runs': { args: [limit?: number]; result: RadarScanRun[] }
+
+  // ---- AI 提纯整理 ----
+  'distill:start': { args: [input: DistillStartInput]; result: OpResult<{ articleId: string }> }
+  'distill:retry': { args: [articleId: string]; result: OpResult<{ articleId: string }> }
+  'distill:cancel': { args: [articleId: string]; result: boolean }
+  'distill:list': { args: []; result: DistilledArticleMeta[] }
+  'distill:get': { args: [articleId: string]; result: DistilledArticle | null }
+  'distill:delete': { args: [articleId: string]; result: void }
+
+  // ---- 飞书交付 ----
+  'feishu:test': { args: [cfg: FeishuConfig]; result: { ok: boolean; message: string } }
+  'feishu:create-doc': { args: [articleId: string]; result: OpResult<{ url: string }> }
 
   // ---- 选题灵感库 ----
   'topic:list': { args: []; result: TopicIdea[] }
@@ -228,6 +247,16 @@ export const apiMethods = {
   radarListChannels: 'radar:list-channels',
   radarRemoveChannel: 'radar:remove-channel',
   radarListRuns: 'radar:list-runs',
+  distillStart: 'distill:start',
+  distillRetry: 'distill:retry',
+  distillCancel: 'distill:cancel',
+  distillList: 'distill:list',
+  distillGet: 'distill:get',
+  distillDelete: 'distill:delete',
+  feishuTest: 'feishu:test',
+  feishuCreateDoc: 'feishu:create-doc',
+  selectSavePath: 'fs:select-save-path',
+  writeTextFile: 'fs:write-text-file',
   topicList: 'topic:list',
   topicInsert: 'topic:insert',
   topicUpdate: 'topic:update',
@@ -249,6 +278,7 @@ export interface IpcEventContract {
   'event:sub-scheduler-tick': [info: { totalNew: number }]
   'event:analysis-auto-done': [info: { channelId: string; channelName: string; videoId: string; videoTitle: string }]
   'event:radar-scan-progress': [progress: RadarScanProgress]
+  'event:distill-progress': [progress: DistillProgress]
 }
 
 /** 渲染端事件订阅方法名 → 事件通道名 */
@@ -259,6 +289,7 @@ export const listenerMethods = {
   onSubSchedulerTick: 'event:sub-scheduler-tick',
   onAnalysisAutoDone: 'event:analysis-auto-done',
   onRadarScanProgress: 'event:radar-scan-progress',
+  onDistillProgress: 'event:distill-progress',
 } as const satisfies Record<string, keyof IpcEventContract>
 
 /** window.api 的事件订阅部分：注册回调，返回取消监听函数 */
