@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, Button, Space, Input, Typography, message, Empty, Tooltip } from 'antd'
-import { CopyOutlined, FileTextOutlined, SearchOutlined, TranslationOutlined } from '@ant-design/icons'
+import { CopyOutlined, FileTextOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import type { DistillSourceType } from '@shared/types'
 
 interface SrtEntry {
   index: number
@@ -29,10 +30,12 @@ interface Props {
   open: boolean
   srtPath: string
   title?: string
+  /** AI 提纯的来源标记（下载记录/Whisper 用 whisper-srt，字幕提取用 subtitle-srt） */
+  sourceType?: Extract<DistillSourceType, 'whisper-srt' | 'subtitle-srt'>
   onClose: () => void
 }
 
-const SrtViewer: React.FC<Props> = ({ open, srtPath, title, onClose }) => {
+const SrtViewer: React.FC<Props> = ({ open, srtPath, title, sourceType = 'whisper-srt', onClose }) => {
   const [entries, setEntries] = useState<SrtEntry[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
@@ -111,9 +114,21 @@ const SrtViewer: React.FC<Props> = ({ open, srtPath, title, onClose }) => {
             导出文本
           </Button>
         </Tooltip>
-        <Tooltip title="复制全文后可粘贴到 ChatGPT/Claude 进行翻译">
-          <Button icon={<TranslationOutlined />} onClick={handleCopyAll} disabled={entries.length === 0}>
-            翻译（复制后粘贴 AI）
+        <Tooltip title="用 AI 把文稿整理成分享式提纯版原文（去噪、修错词、按主题组织），完成后在「提纯稿库」查看">
+          <Button
+            type="primary"
+            icon={<ThunderboltOutlined />}
+            disabled={entries.length === 0}
+            onClick={async () => {
+              const r = await window.api.distillStart({ sourceType, srtPath, title: title || '字幕文稿' })
+              if (r.status === 'success') {
+                messageApi.success('已开始 AI 提纯，可到「字幕和转录 → 提纯稿库」查看进度', 5)
+              } else {
+                messageApi.error(r.errorMessage || '提纯启动失败')
+              }
+            }}
+          >
+            AI 提纯
           </Button>
         </Tooltip>
       </div>

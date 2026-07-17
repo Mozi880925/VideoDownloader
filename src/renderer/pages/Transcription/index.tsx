@@ -12,6 +12,7 @@ import {
   PlusOutlined,
   ClearOutlined,
   CloseOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/settingsStore'
 import { genTaskId } from '../../utils/id'
@@ -363,13 +364,36 @@ const Transcription: React.FC = () => {
     },
     {
       title: '操作',
-      width: 120,
+      width: 170,
       render: (_: unknown, task: TranscribeTask) => (
         <div style={{ display: 'flex', gap: 6 }}>
           {task.status === 'completed' && task.outputPath && (
-            <Tooltip title="打开字幕文件">
-              <Button size="small" icon={<FileTextOutlined />} onClick={() => handleOpenOutput(task.outputPath)}>字幕</Button>
-            </Tooltip>
+            <>
+              <Tooltip title="打开字幕文件">
+                <Button size="small" icon={<FileTextOutlined />} onClick={() => handleOpenOutput(task.outputPath)}>字幕</Button>
+              </Tooltip>
+              <Tooltip title="用 AI 整理成分享式提纯版原文，完成后在「提纯稿库」查看">
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<ThunderboltOutlined />}
+                  onClick={async () => {
+                    const r = await window.api.distillStart({
+                      sourceType: 'whisper-srt',
+                      srtPath: task.outputPath!,
+                      title: task.title,
+                    })
+                    if (r.status === 'success') {
+                      message.success('已开始 AI 提纯，可到「提纯稿库」查看进度', 5)
+                    } else {
+                      message.error(r.errorMessage || '提纯启动失败')
+                    }
+                  }}
+                >
+                  提纯
+                </Button>
+              </Tooltip>
+            </>
           )}
           <Tooltip title="删除">
             <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleRemove(task.id)} />

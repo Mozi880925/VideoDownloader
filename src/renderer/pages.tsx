@@ -22,6 +22,7 @@ import Radar from './pages/Radar'
 import TopicIdeas from './pages/TopicIdeas'
 import Transcription from './pages/Transcription'
 import SubtitleExtract from './pages/SubtitleExtract'
+import DistillLibrary from './pages/DistillLibrary'
 import WhisperConfig from './pages/WhisperConfig'
 import Settings from './pages/Settings'
 import Network from './pages/Network'
@@ -39,6 +40,7 @@ export const pageComponents = {
   'topic-ideas': TopicIdeas,
   'transcription': Transcription,
   'subtitle-extract': SubtitleExtract,
+  'distill-library': DistillLibrary,
   'whisper-config': WhisperConfig,
   'settings': Settings,
   'network': Network,
@@ -69,6 +71,7 @@ export const menuItems: MenuProps['items'] = [
     children: [
       { key: 'transcription', icon: <SoundOutlined />, label: 'AI 识别字幕' },
       { key: 'subtitle-extract', icon: <FileTextOutlined />, label: '字幕提取' },
+      { key: 'distill-library', icon: <FileTextOutlined />, label: '提纯稿库' },
       { key: 'whisper-config', icon: <SettingOutlined />, label: 'Whisper 配置' },
     ],
   },

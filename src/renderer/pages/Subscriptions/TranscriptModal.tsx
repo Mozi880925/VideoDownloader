@@ -1,7 +1,7 @@
 import React from 'react'
 import type { NewVideoItem, VideoTranscript } from '@shared/types'
 import { Button, Modal, Spin, Tag, message } from 'antd'
-import { CopyOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons'
+import { CopyOutlined, FileTextOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons'
 
 // ────────── 视频文案弹窗（免下载提字幕 → 纯文本） ──────────
 
@@ -77,6 +77,27 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({
                 {transcript.language && <Tag color="blue">{transcript.language}</Tag>}
                 <span style={{ fontSize: 12, color: '#888' }}>{transcript.text.length} 字</span>
                 <div style={{ flex: 1 }} />
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<ThunderboltOutlined />}
+                  title="用 AI 整理成分享式提纯版原文，完成后在「提纯稿库」查看"
+                  onClick={async () => {
+                    const r = await window.api.distillStart({
+                      sourceType: 'subscription',
+                      videoId: video.id,
+                      channelId: video.channelId,
+                      title: video.title,
+                    })
+                    if (r.status === 'success') {
+                      message.success('已开始 AI 提纯，可到「字幕和转录 → 提纯稿库」查看进度', 5)
+                    } else {
+                      message.error(r.errorMessage || '提纯启动失败')
+                    }
+                  }}
+                >
+                  AI 提纯
+                </Button>
                 <Button size="small" icon={<CopyOutlined />} onClick={copyAll}>复制全部</Button>
               </div>
               <div
