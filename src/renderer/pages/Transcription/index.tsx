@@ -18,6 +18,7 @@ import { useSettingsStore } from '../../store/settingsStore'
 import { genTaskId } from '../../utils/id'
 import { storageGet, storageSet } from '../../utils/storage'
 import { formatDuration } from '../../utils/format'
+import { friendlyError } from '../../../shared/errorTranslator'
 
 // ────────── 类型 ──────────
 
@@ -32,7 +33,8 @@ interface TranscribeTask {
   addedAt: number
   duration?: number        // 秒
   status: TranscribeStatus
-  progress: number         // 0-100
+  progress: number         // 0-100（URL 任务：下载 0-40，转录 40-100）
+  stage?: 'downloading' | 'transcribing'   // URL 任务的两阶段
   outputPath?: string      // 生成的 .srt 路径
   errorMessage?: string
 }
@@ -49,7 +51,9 @@ const StatusTag: React.FC<{ task: TranscribeTask }> = ({ task }) => {
   if (task.status === 'pending') return <Tag>等待中</Tag>
   if (task.status === 'processing') return (
     <div style={{ minWidth: 120 }}>
-      <div style={{ fontSize: 12, color: '#1677ff', marginBottom: 2 }}>转录中...</div>
+      <div style={{ fontSize: 12, color: '#1677ff', marginBottom: 2 }}>
+        {task.stage === 'downloading' ? '下载音频中...' : '转录中...'}
+      </div>
       <Progress percent={task.progress} size="small" showInfo={false} strokeColor="#1677ff" />
     </div>
   )
@@ -240,25 +244,72 @@ const Transcription: React.FC = () => {
     const pending = allPending
 
     for (const task of pending) {
-      // 仅支持本地文件
-      if (task.sourceType === 'url') {
+      let videoPath = task.sourcePath
+      const isUrl = task.sourceType === 'url'
+
+      // ── URL 任务：阶段一，先用 yt-dlp 提取音频到本地（进度映射 0-40%）──
+      if (isUrl) {
         setTasks(prev => prev.map(t => t.id === task.id
-          ? { ...t, status: 'failed', errorMessage: 'URL 模式暂不支持，请先手动下载后选择本地文件' }
+          ? { ...t, status: 'processing', progress: 0, stage: 'downloading' as const }
           : t
         ))
-        continue
+        const baseDir = appSettings.downloadPath || await window.api.getDownloadsPath().catch(() => '')
+        if (!baseDir) {
+          setTasks(prev => prev.map(t => t.id === task.id
+            ? { ...t, status: 'failed', errorMessage: '无法确定下载目录，请到设置里指定' }
+            : t
+          ))
+          continue
+        }
+        const unsubDl = window.api.onDownloadProgress((p) => {
+          if (p.taskId === task.id) {
+            setTasks(prev => prev.map(t => t.id === task.id
+              ? { ...t, progress: Math.round(p.progress * 0.4) }
+              : t
+            ))
+          }
+        })
+        try {
+          const dl = await window.api.downloadVideo({
+            url: task.sourcePath,
+            taskId: task.id,
+            audioOnly: true,
+            outputPath: `${baseDir}/transcribe-audio/%(title).80s.%(ext)s`,
+          })
+          unsubDl()
+          if (dl.status !== 'success' || !dl.data) {
+            setTasks(prev => prev.map(t => t.id === task.id
+              ? { ...t, status: 'failed', errorMessage: `音频下载失败：${friendlyError(dl.errorMessage || '')}` }
+              : t
+            ))
+            continue
+          }
+          videoPath = dl.data
+          // 下载完成：标题换成真实文件名，进入转录阶段
+          setTasks(prev => prev.map(t => t.id === task.id
+            ? { ...t, title: shortPath(videoPath), stage: 'transcribing' as const, progress: 40 }
+            : t
+          ))
+        } catch (err: unknown) {
+          unsubDl()
+          setTasks(prev => prev.map(t => t.id === task.id
+            ? { ...t, status: 'failed', errorMessage: `音频下载失败：${String(err)}` }
+            : t
+          ))
+          continue
+        }
+      } else {
+        setTasks(prev => prev.map(t => t.id === task.id
+          ? { ...t, status: 'processing', progress: 0, stage: 'transcribing' as const }
+          : t
+        ))
       }
 
-      setTasks(prev => prev.map(t => t.id === task.id
-        ? { ...t, status: 'processing', progress: 0 }
-        : t
-      ))
-
-      // 监听进度
+      // ── 阶段二：Whisper 转录（URL 任务进度映射 40-100%，本地文件 0-100%）──
       const unsub = window.api.onTranscribeProgress((p) => {
         if (p.taskId === task.id) {
           setTasks(prev => prev.map(t => t.id === task.id
-            ? { ...t, progress: Math.round(p.progress) }
+            ? { ...t, progress: isUrl ? 40 + Math.round(p.progress * 0.6) : Math.round(p.progress) }
             : t
           ))
         }
@@ -266,7 +317,7 @@ const Transcription: React.FC = () => {
 
       try {
         const result = await window.api.transcribeVideo({
-          videoPath: task.sourcePath,
+          videoPath,
           config: whisper,
           taskId: task.id,
         })

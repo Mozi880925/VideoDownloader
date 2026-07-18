@@ -57,6 +57,7 @@ const VALID_DOMAINS = [
   'bilibili.com', 'b23.tv',
   'douyin.com', 'v.douyin.com', 'iesdouyin.com',
   'xiaohongshu.com', 'xhslink.com',
+  'xiaoyuzhoufm.com',
   'instagram.com',
   'twitter.com', 'x.com',
   'facebook.com', 'fb.watch',
