@@ -23,7 +23,7 @@ interface NavStore {
 }
 
 export const useNavStore = create<NavStore>((set) => ({
-  currentPage: 'video-download',
+  currentPage: 'radar',
   setPage: (page) => set({ currentPage: page }),
 
   retryUrl: null,

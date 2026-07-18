@@ -43,20 +43,21 @@ export type PageKey = keyof typeof pageComponents
 
 /** 侧边栏菜单（分组 key 不是 PageKey，Menu 点击时只会命中叶子项） */
 export const menuItems: MenuProps['items'] = [
+  { key: 'radar', icon: <RadarChartOutlined />, label: '蓝海雷达' },
+  { key: 'subscriptions', icon: <BellOutlined />, label: '频道订阅' },
+  { key: 'transcript-hub', icon: <AudioOutlined />, label: '字幕和转录' },
+  { key: 'topic-ideas', icon: <BulbOutlined />, label: '选题灵感库' },
+  { type: 'divider' },
   {
     key: 'downloader',
     icon: <DownloadOutlined />,
-    label: '下载器',
+    label: '下载工具',
     children: [
       { key: 'video-download', icon: <VideoCameraOutlined />, label: '视频下载' },
       { key: 'batch-download', icon: <UnorderedListOutlined />, label: '批量下载' },
       { key: 'download-list', icon: <UnorderedListOutlined />, label: '下载列表' },
     ],
   },
-  { key: 'subscriptions', icon: <BellOutlined />, label: '频道订阅' },
-  { key: 'radar', icon: <RadarChartOutlined />, label: '蓝海雷达' },
-  { key: 'topic-ideas', icon: <BulbOutlined />, label: '选题灵感库' },
-  { key: 'transcript-hub', icon: <AudioOutlined />, label: '字幕和转录' },
   { key: 'network', icon: <GlobalOutlined />, label: '网络' },
   { key: 'settings', icon: <SettingOutlined />, label: '设置' },
   { key: 'about', icon: <InfoCircleOutlined />, label: '关于' },

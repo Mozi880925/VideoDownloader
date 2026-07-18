@@ -53,7 +53,6 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedKey, onSelect }) => {
       <Menu
         mode="inline"
         selectedKeys={[selectedKey]}
-        defaultOpenKeys={['downloader']}
         items={menuItems}
         onClick={({ key }) => onSelect(key as PageKey)}
         style={{
