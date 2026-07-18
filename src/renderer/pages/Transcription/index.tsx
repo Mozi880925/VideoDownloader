@@ -35,8 +35,16 @@ interface TranscribeTask {
   status: TranscribeStatus
   progress: number         // 0-100（URL 任务：下载 0-40，转录 40-100）
   stage?: 'downloading' | 'transcribing'   // URL 任务的两阶段
+  speed?: string            // 下载阶段：实时速度（如 6.2MiB/s）
+  lastLine?: string         // 转录阶段：whisper 最新输出行（含时间戳，可见"正转到哪句"）
   outputPath?: string      // 生成的 .srt 路径
   errorMessage?: string
+}
+
+/** 从 whisper 输出行提取时间戳片段，如 "[00:12:34.000 --> 00:12:38.400] 文字" → "00:12:34" */
+function extractWhisperTimestamp(line: string): string | null {
+  const m = line.match(/(\d{2}:\d{2}:\d{2})\.\d{3}\s*-->/)
+  return m ? m[1] : null
 }
 
 function shortPath(p: string): string {
@@ -49,14 +57,19 @@ function shortPath(p: string): string {
 
 const StatusTag: React.FC<{ task: TranscribeTask }> = ({ task }) => {
   if (task.status === 'pending') return <Tag>等待中</Tag>
-  if (task.status === 'processing') return (
-    <div style={{ minWidth: 120 }}>
-      <div style={{ fontSize: 12, color: '#1677ff', marginBottom: 2 }}>
-        {task.stage === 'downloading' ? '下载音频中...' : '转录中...'}
+  if (task.status === 'processing') {
+    const ts = task.lastLine ? extractWhisperTimestamp(task.lastLine) : null
+    return (
+      <div style={{ minWidth: 160 }}>
+        <div style={{ fontSize: 12, color: '#1677ff', marginBottom: 2 }}>
+          {task.stage === 'downloading'
+            ? `下载音频中...${task.speed ? `  ${task.speed}` : ''}`
+            : `转录中...${ts ? `  已处理到 ${ts}` : ''}`}
+        </div>
+        <Progress percent={Math.round(task.progress)} size="small" strokeColor="#1677ff" />
       </div>
-      <Progress percent={task.progress} size="small" showInfo={false} strokeColor="#1677ff" />
-    </div>
-  )
+    )
+  }
   if (task.status === 'completed') return <Tag color="success">已完成</Tag>
   if (task.status === 'failed') return (
     <Tooltip title={task.errorMessage}>
@@ -264,7 +277,7 @@ const Transcription: React.FC = () => {
         const unsubDl = window.api.onDownloadProgress((p) => {
           if (p.taskId === task.id) {
             setTasks(prev => prev.map(t => t.id === task.id
-              ? { ...t, progress: Math.round(p.progress * 0.4) }
+              ? { ...t, progress: Math.round(p.progress * 0.4), speed: p.speed }
               : t
             ))
           }
@@ -309,7 +322,11 @@ const Transcription: React.FC = () => {
       const unsub = window.api.onTranscribeProgress((p) => {
         if (p.taskId === task.id) {
           setTasks(prev => prev.map(t => t.id === task.id
-            ? { ...t, progress: isUrl ? 40 + Math.round(p.progress * 0.6) : Math.round(p.progress) }
+            ? {
+                ...t,
+                progress: isUrl ? 40 + Math.round(p.progress * 0.6) : Math.round(p.progress),
+                lastLine: p.lastLine ?? t.lastLine,
+              }
             : t
           ))
         }
