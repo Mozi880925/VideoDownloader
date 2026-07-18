@@ -32,10 +32,10 @@ export function cancelTranscribe(taskId: string): boolean {
 
 function validateConfig(cfg: TranscribeOptions['config']): string | null {
   if (!cfg.executablePath || !fs.existsSync(cfg.executablePath)) {
-    return 'Whisper 可执行文件路径未配置或不存在，请到「设置 → Whisper」里选择'
+    return 'Whisper 可执行文件路径未配置或不存在，请到「设置 → 字幕设置」里选择'
   }
   if (!cfg.modelPath || !fs.existsSync(cfg.modelPath)) {
-    return 'Whisper 模型文件路径未配置或不存在，请到「设置 → Whisper」里选择 ggml-*.bin 模型'
+    return 'Whisper 模型文件路径未配置或不存在，请到「设置 → 字幕设置」里选择 ggml-*.bin 模型'
   }
   return null
 }

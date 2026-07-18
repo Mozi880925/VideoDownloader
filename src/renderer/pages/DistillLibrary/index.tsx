@@ -10,8 +10,6 @@ import {
   LinkOutlined,
 } from '@ant-design/icons'
 import type { DistilledArticleMeta, DistillStatus } from '@shared/types'
-import PageTitle from '../../components/PageTitle'
-import { PURPLE_GRADIENT } from '../../theme/tokens'
 import ArticleView from './ArticleView'
 import { SOURCE_TYPE_LABEL, exportArticleMarkdown } from './shared'
 
@@ -113,15 +111,10 @@ const DistillLibrary: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <PageTitle
-        title="提纯稿库"
-        size={24}
-        gradient={PURPLE_GRADIENT}
-        style={{ marginBottom: 6 }}
-        subtitle="转录稿经 AI 整理成的分享式提纯版原文——不是摘要，是去噪后的可读全文"
-        subtitleStyle={{ color: '#888', marginBottom: 20, fontSize: 14 }}
-      />
+    <div>
+      <p style={{ color: '#888', marginBottom: 16, fontSize: 13 }}>
+        转录稿经 AI 整理成的分享式提纯版原文——不是摘要，是去噪后的可读全文
+      </p>
 
       <Table<DistilledArticleMeta>
         rowKey="id"

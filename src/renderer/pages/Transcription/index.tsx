@@ -1,6 +1,4 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
-import PageTitle from '../../components/PageTitle'
-import { PURPLE_GRADIENT } from '../../theme/tokens'
 import {
   Button, Input, Table, Tag, Tooltip, Empty, message, Segmented, Progress,
 } from 'antd'
@@ -211,11 +209,11 @@ const Transcription: React.FC = () => {
   const handleStart = useCallback(async () => {
     const whisper = appSettings.whisper
     if (!whisper?.executablePath) {
-      message.error('请先在「Whisper 配置」页面设置可执行文件路径')
+      message.error('请先到「设置 → 字幕设置」配置 Whisper 可执行文件路径')
       return
     }
     if (!whisper?.modelPath) {
-      message.error('请先在「Whisper 配置」页面设置模型文件路径')
+      message.error('请先到「设置 → 字幕设置」配置 Whisper 模型文件路径')
       return
     }
     if (processingRef.current) return
@@ -475,16 +473,7 @@ const Transcription: React.FC = () => {
   const canTranscribe = hasPending || pendingFiles.length > 0 || (tab === 'url' && urlText.trim().length > 0)
 
   return (
-    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
-      <PageTitle
-        title="AI 识别字幕"
-        size={24}
-        gradient={PURPLE_GRADIENT}
-        style={{ marginBottom: 6 }}
-        subtitle="使用本地 Whisper 模型对视频/音频进行语音识别，自动生成 .srt 字幕文件"
-        subtitleStyle={{ color: '#888', marginBottom: 20, fontSize: 14 }}
-      />
-
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* ── 输入区 ── */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: 16 }}>
         {/* Tab 切换 */}
@@ -593,7 +582,7 @@ const Transcription: React.FC = () => {
         {/* Whisper 未配置提示 */}
         {!appSettings.whisper?.executablePath && (
           <div style={{ color: '#cf1322', fontSize: 12, marginBottom: 8 }}>
-            ⚠️ 未配置 Whisper 可执行文件，请先前往「Whisper 配置」页面完成设置
+            ⚠️ 未配置 Whisper 可执行文件，请先到「设置 → 字幕设置」完成配置
           </div>
         )}
 

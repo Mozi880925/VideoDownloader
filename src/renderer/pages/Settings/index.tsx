@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import PageTitle from '../../components/PageTitle'
 import type { LlmConfig, FeishuConfig } from '@shared/types'
 import { Card, Form, Select, Switch, Button, message, Input, InputNumber, Tag, Spin, Segmented, Divider } from 'antd'
-import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined, RobotOutlined, ApiOutlined, SendOutlined } from '@ant-design/icons'
+import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined, RobotOutlined, ApiOutlined, SendOutlined, AudioOutlined } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/settingsStore'
 
 const SUB_LANG_OPTIONS = [
@@ -32,6 +32,12 @@ const MODULE_OPTIONS: { label: string; value: SettingsModule }[] = [
 ]
 
 const cardStyle: React.CSSProperties = { borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }
+
+/** 推荐 Whisper 线程数：约等于物理核心数（逻辑核心的一半），下限 4、上限 16 */
+function recommendedThreads(): number {
+  const logical = navigator.hardwareConcurrency || 8
+  return Math.min(16, Math.max(4, Math.floor(logical / 2)))
+}
 
 const Settings: React.FC = () => {
   const [form] = Form.useForm()
@@ -158,6 +164,38 @@ const Settings: React.FC = () => {
       form.setFieldsValue({ domesticCookiesPath: filePath })
       updateSettings({ domesticCookiesPath: filePath })
     }
+  }
+
+  const handleSelectWhisperExe = async () => {
+    const filePath = await window.api.selectFile([
+      { name: 'Whisper 可执行文件', extensions: ['exe'] },
+      { name: '所有文件', extensions: ['*'] },
+    ])
+    if (filePath) {
+      const current = form.getFieldValue('whisper') ?? {}
+      form.setFieldsValue({ whisper: { ...current, executablePath: filePath } })
+      updateSettings({ whisper: { ...appSettings.whisper!, ...current, executablePath: filePath } })
+    }
+  }
+
+  const handleSelectWhisperModel = async () => {
+    const filePath = await window.api.selectFile([
+      { name: 'Whisper 模型（ggml-*.bin）', extensions: ['bin'] },
+      { name: '所有文件', extensions: ['*'] },
+    ])
+    if (filePath) {
+      const current = form.getFieldValue('whisper') ?? {}
+      form.setFieldsValue({ whisper: { ...current, modelPath: filePath } })
+      updateSettings({ whisper: { ...appSettings.whisper!, ...current, modelPath: filePath } })
+    }
+  }
+
+  const handleSetRecommendedThreads = () => {
+    const t = recommendedThreads()
+    const current = form.getFieldValue('whisper') ?? {}
+    form.setFieldsValue({ whisper: { ...current, threads: t } })
+    updateSettings({ whisper: { ...appSettings.whisper!, ...current, threads: t } })
+    message.success(`已设为 ${t} 线程`)
   }
 
   const handleOpenLogs = async () => {
@@ -287,6 +325,7 @@ const Settings: React.FC = () => {
         )}
 
         {activeModule === 'subtitle' && (
+          <>
           <Card bordered={false} style={cardStyle}>
             <Form.Item
               label="默认下载字幕"
@@ -337,6 +376,63 @@ const Settings: React.FC = () => {
               <Switch checkedChildren="开启" unCheckedChildren="关闭" />
             </Form.Item>
           </Card>
+
+          <Card
+            bordered={false}
+            style={{ ...cardStyle, marginTop: 24 }}
+            title={<span><AudioOutlined style={{ marginRight: 6, color: '#1677ff' }} />Whisper 语音转写（AI 识别字幕用）</span>}
+          >
+            <p style={{ color: '#666', marginBottom: 20, fontSize: 13 }}>
+              配置 whisper.cpp 后，可以给没有字幕的视频/播客自动生成字幕。需要先准备好可执行文件（whisper-cli.exe / main.exe）和模型文件（ggml-*.bin）。
+            </p>
+
+            <Form.Item label="可执行文件路径" extra="通常是 whisper-cli.exe 或旧版 main.exe">
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Form.Item name={['whisper', 'executablePath']} noStyle>
+                  <Input readOnly placeholder="请选择 whisper-cli.exe / main.exe..." />
+                </Form.Item>
+                <Button icon={<FolderOpenOutlined />} onClick={handleSelectWhisperExe}>选择</Button>
+              </div>
+            </Form.Item>
+
+            <Form.Item label="模型文件路径" extra="例如 ggml-base.bin / ggml-small.bin / ggml-medium.bin。模型越大越准、越慢。">
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Form.Item name={['whisper', 'modelPath']} noStyle>
+                  <Input readOnly placeholder="请选择 ggml-*.bin 模型文件..." />
+                </Form.Item>
+                <Button icon={<FolderOpenOutlined />} onClick={handleSelectWhisperModel}>选择</Button>
+              </div>
+            </Form.Item>
+
+            <Form.Item label="默认识别语言" name={['whisper', 'language']}>
+              <Select
+                style={{ width: 200 }}
+                options={[
+                  { value: 'auto', label: '自动检测' },
+                  { value: 'zh', label: '中文' },
+                  { value: 'en', label: '英文' },
+                  { value: 'ja', label: '日文' },
+                  { value: 'ko', label: '韩文' },
+                  { value: 'es', label: '西班牙文' },
+                  { value: 'fr', label: '法文' },
+                  { value: 'de', label: '德文' },
+                  { value: 'ru', label: '俄文' },
+                ]}
+              />
+            </Form.Item>
+
+            <Form.Item
+              label="线程数"
+              name={['whisper', 'threads']}
+              extra={`转录速度与线程数近似成正比。本机检测到 ${navigator.hardwareConcurrency} 个逻辑核心，推荐设为 ${recommendedThreads()}（约物理核心数，超线程对 whisper 提速有限）。`}
+            >
+              <InputNumber min={1} max={32} style={{ width: 120 }} />
+            </Form.Item>
+            <Button size="small" onClick={handleSetRecommendedThreads}>
+              一键设为推荐值（{recommendedThreads()} 线程）
+            </Button>
+          </Card>
+          </>
         )}
 
         {activeModule === 'cookie' && (
