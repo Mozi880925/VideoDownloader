@@ -4,6 +4,12 @@ import { Card, Form, Select, Button, Input, InputNumber, message } from 'antd'
 import { FolderOpenOutlined, AudioOutlined } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/settingsStore'
 
+/** 推荐线程数：约等于物理核心数（逻辑核心的一半），下限 4、上限 16 */
+function recommendedThreads(): number {
+  const logical = navigator.hardwareConcurrency || 8
+  return Math.min(16, Math.max(4, Math.floor(logical / 2)))
+}
+
 const WhisperConfig: React.FC = () => {
   const [form] = Form.useForm()
   const appSettings = useSettingsStore(s => s.appSettings)
@@ -97,9 +103,25 @@ const WhisperConfig: React.FC = () => {
             />
           </Form.Item>
 
-          <Form.Item label="线程数" name={['whisper', 'threads']} extra="CPU 线程数，建议设为 CPU 核心数（1-32）">
+          <Form.Item
+            label="线程数"
+            name={['whisper', 'threads']}
+            extra={`转录速度与线程数近似成正比。本机检测到 ${navigator.hardwareConcurrency} 个逻辑核心，推荐设为 ${recommendedThreads()}（约物理核心数，超线程对 whisper 提速有限）。`}
+          >
             <InputNumber min={1} max={32} style={{ width: 120 }} />
           </Form.Item>
+          <Button
+            size="small"
+            onClick={() => {
+              const t = recommendedThreads()
+              const current = form.getFieldValue('whisper') ?? {}
+              form.setFieldsValue({ whisper: { ...current, threads: t } })
+              updateSettings({ whisper: { ...appSettings.whisper!, ...current, threads: t } })
+              message.success(`已设为 ${t} 线程`)
+            }}
+          >
+            一键设为推荐值（{recommendedThreads()} 线程）
+          </Button>
         </Form>
       </Card>
     </div>
