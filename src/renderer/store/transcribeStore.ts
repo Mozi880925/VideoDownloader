@@ -161,6 +161,18 @@ async function processOne(task: TranscribeTask): Promise<void> {
     patchTask(task.id, { status: 'processing', progress: 0, stage: 'transcribing' })
   }
 
+  // ── 复用已有字幕：音频旁已存在同名 .srt 则直接完成 ──
+  // whisper.cpp 只在整段转录结束后才写出 srt，存在即完整。典型场景：
+  // 上次"中断"的任务 whisper 实际在主进程后台跑完了，重试时直接秒完成。
+  const expectedSrt = videoPath.replace(/\.[^.]+$/, '.srt')
+  try {
+    const exists = await window.api.checkPaths([expectedSrt])
+    if (exists[expectedSrt]) {
+      patchTask(task.id, { status: 'completed', progress: 100, outputPath: expectedSrt, stage: undefined })
+      return
+    }
+  } catch { /* 检查失败则正常转录 */ }
+
   // ── 阶段二：Whisper 转录（URL 任务进度映射 40-100%，本地文件 0-100%）──
   const unsub = window.api.onTranscribeProgress((p) => {
     if (p.taskId === task.id) {
@@ -177,6 +189,8 @@ async function processOne(task: TranscribeTask): Promise<void> {
       videoPath,
       config: whisper,
       taskId: task.id,
+      // 上方已做复用检测，走到这里说明用户确需重转（或竞态残留），直接覆盖
+      overwrite: true,
     })
     unsub()
     if (result.status === 'success') {
