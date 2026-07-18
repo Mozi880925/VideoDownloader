@@ -4,11 +4,13 @@
 
 个人使用的「YouTube 对标研究工作台」桌面应用：从视频下载器起步，现已包含
 下载（单视频/批量/搜索/播放列表）、频道订阅监控、播放量快照与爆款探测、
-AI 标题/频道拆解、选题灵感库、字幕提取与 Whisper 转录。底层使用 yt-dlp +
-YouTube Data API。
+AI 标题/频道拆解、选题灵感库、字幕提取与 Whisper 转录（含 URL/播客直接
+转录）、AI 提纯整理（转录稿→分享式提纯版原文，分块+断点续跑）、飞书文档
+交付、蓝海雷达（关键词扫描 → 新锐频道榜单 → 频道库沉淀）。底层使用
+yt-dlp + YouTube Data API + LLM API（OpenAI 兼容）+ 飞书开放平台。
 
-下一个大模块：蓝海雷达（关键词扫描 → 新频道筛选评分 → 频道库沉淀），
-地基（IPC 契约、编号迁移、配额账本、settingsHub）已就绪。
+蓝海雷达评分目前是月均吸粉速度（订阅数/建号月龄）单指标排序，「蓝海指数」
+综合评分公式待二期（需数周真实扫描数据调权重）。
 
 ## 技术栈
 
@@ -29,13 +31,15 @@ src/
 │   ├── index.ts       # 只有生命周期 + createWindow + registerAllIpc()
 │   ├── preload.ts     # 由 ipcContract 的 apiMethods/listenerMethods 工厂生成
 │   ├── ipc/           # 按域拆分的 handler（typed.ts 提供类型安全 handle/sendTo/sendToAll）
-│   └── services/      # 业务：ytdlp/（目录）、db、subscription、youtubeApi、youtubeQuota、
-│                      #      llm、autoAnalysis、transcript、whisper、ffmpeg、toolPaths、
-│                      #      processUtils、settingsHub、cookiesService、logger
+│   └── services/      # 业务：ytdlp/（目录）、db、subscription、radar、distill、feishu、
+│                      #      youtubeApi、youtubeQuota、llm、autoAnalysis、transcript、
+│                      #      whisper、ffmpeg、toolPaths、processUtils、settingsHub、
+│                      #      cookiesService、fsUtils、logger
 └── renderer/
     ├── pages.tsx      # 页面注册唯一来源（PageKey/组件映射/侧边栏菜单）
     ├── theme/tokens.ts# 设计 token 唯一来源
-    ├── store/         # navStore / settingsStore / activeTasksStore / historyStore / batchStore
+    ├── store/         # navStore / settingsStore / activeTasksStore / historyStore /
+    │                  # batchStore / transcribeStore
     ├── utils/         # format、id、storage、platform、buildOutputPath、videoParse、downloadRunner
     ├── components/    # PageTitle、Thumbnail、Sidebar 等公共组件
     └── pages/         # 每页一个文件夹；大页面拆子组件 + 页面级 hook
@@ -79,8 +83,11 @@ src/
 
 - 下载器（分组）：视频下载（单视频 | 搜索 | 播放列表）、批量下载、下载列表
 - 频道订阅（双栏：频道列表 + 视频流，含爆款探测/AI 拆解/文案提取）
+- 蓝海雷达（关键词管理 + 扫描 + 新锐频道榜单）
 - 选题灵感库
-- 字幕和转录（分组）：AI 识别字幕、字幕提取、Whisper 配置
+- 字幕和转录（合并页，胶囊 Tab 切换）：AI 识别字幕（含 URL/播客转录）|
+  字幕提取 | 提纯稿库（AI 提纯 + 飞书交付）；Whisper 引擎配置在
+  「设置 → 字幕设置」，非独立导航项
 - 网络（代理 + 连通性测试）
 - 设置（常规/字幕/Cookie/AI 与数据源/系统）
 - 关于
