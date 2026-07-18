@@ -4,7 +4,7 @@ import type { DownloadOptions, DownloadProgress } from '../../../shared/types'
 import { logInfo, logError } from '../logger'
 import { getYtdlpPath, getFfmpegPath } from '../toolPaths'
 import { killProcessTree } from '../processUtils'
-import { buildBaseArgs } from './config'
+import { buildBaseArgs, ytdlpSpawnEnv } from './config'
 import { activeDownloads, cancelledTasks } from './registry'
 
 /**
@@ -91,7 +91,7 @@ export function downloadVideo(
     }
 
     logInfo(`[downloadVideo] start attempt ${attempt + 1}/${maxRetries + 1} for task ${taskId}`)
-    const proc = spawn(ytdlpPath, args)
+    const proc = spawn(ytdlpPath, args, { env: ytdlpSpawnEnv() })
     activeDownloads.set(taskId, proc)
 
     const progressRe = /^\[VD_PROGRESS\]\s*(\d+\.?\d*)%?\s*\|([^|]*)\|([^|]*)\|([^|]*)\|(.+)/

@@ -54,6 +54,19 @@ export function setProxyUrl(url: string): void {
   logInfo(`[ytdlp] proxy url updated: ${url || '(none)'}`)
 }
 
+// ────────── 子进程环境 ──────────
+
+/**
+ * yt-dlp 子进程环境：强制 Python 用 UTF-8 输出 stdout/stderr。
+ * Windows 中文系统上 Python 向管道输出默认用系统代码页（CP936/GBK），
+ * Node 按 UTF-8 解码会把中文文件路径读成乱码——下载"成功"但
+ * [VD_FILEPATH] 捕获到的路径找不到文件，转录等后续步骤全部失败。
+ * 所有 spawn/execFile yt-dlp 的调用点必须带上此环境。
+ */
+export function ytdlpSpawnEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+}
+
 // ────────── Shared base args ──────────
 
 export function buildBaseArgs(proxy?: string, targetUrl?: string): string[] {

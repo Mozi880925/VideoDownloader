@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { logInfo, logError } from '../logger'
 import { getYtdlpPath } from '../toolPaths'
-import { buildBaseArgs } from './config'
+import { buildBaseArgs, ytdlpSpawnEnv } from './config'
 
 // ────────── 字幕提取（仅下载字幕，不下载视频） ──────────
 
@@ -40,7 +40,7 @@ export function extractSubtitles(
       url,
     ]
 
-    const proc = spawn(getYtdlpPath(), args, { windowsHide: true })
+    const proc = spawn(getYtdlpPath(), args, { windowsHide: true, env: ytdlpSpawnEnv() })
 
     let stdoutBuf = ''
     let stderrBuf = ''

@@ -4,7 +4,7 @@ import type { VideoInfo, VideoFormat, VideoChapter, YtdlpInfo, SearchResult } fr
 import { logInfo, logError } from '../logger'
 import { initPaths, pathsInitialized, getYtdlpPath } from '../toolPaths'
 import { killProcessTree } from '../processUtils'
-import { buildBaseArgs } from './config'
+import { buildBaseArgs, ytdlpSpawnEnv } from './config'
 import { activeParses, cancelledTasks } from './registry'
 
 const execFileAsync = promisify(execFile)
@@ -19,7 +19,7 @@ export async function detectYtdlp(): Promise<YtdlpInfo> {
   }
   const ytdlpPath = getYtdlpPath()
   try {
-    const { stdout } = await execFileAsync(ytdlpPath, ['--version'], { timeout: 5000 })
+    const { stdout } = await execFileAsync(ytdlpPath, ['--version'], { timeout: 5000, env: ytdlpSpawnEnv() })
     return { available: true, path: ytdlpPath, version: stdout.trim() }
   } catch {
     return { available: false, path: '', version: '' }
@@ -120,7 +120,7 @@ export async function parseVideo(url: string, proxy?: string, taskId?: string): 
       }
     }
 
-    const proc = spawn(ytdlpPath, args)
+    const proc = spawn(ytdlpPath, args, { env: ytdlpSpawnEnv() })
     activeParses.set(parseId, proc)
 
     // 30 秒超时
@@ -218,7 +218,7 @@ export async function searchVideos(keyword: string, limit = 20, proxy?: string):
     let stderr = ''
     let settled = false
 
-    const proc = spawn(ytdlpPath, args)
+    const proc = spawn(ytdlpPath, args, { env: ytdlpSpawnEnv() })
 
     const timeout = setTimeout(() => {
       if (!settled) {
@@ -260,7 +260,7 @@ export async function updateYtdlp(): Promise<{ success: boolean; output: string 
   const ytdlpPath = getYtdlpPath()
   return new Promise((resolve) => {
     let output = ''
-    const proc = spawn(ytdlpPath, ['-U'], { timeout: 60_000 })
+    const proc = spawn(ytdlpPath, ['-U'], { timeout: 60_000, env: ytdlpSpawnEnv() })
     proc.stdout.on('data', (c: Buffer) => { output += c.toString() })
     proc.stderr.on('data', (c: Buffer) => { output += c.toString() })
     proc.on('close', (code) => {

@@ -4,7 +4,7 @@ import { logInfo } from '../logger'
 import { isoToUploadDate } from '../../../shared/dateUtils'
 import { fetchChannelVideosViaApi } from '../youtubeApi'
 import { getYtdlpPath } from '../toolPaths'
-import { buildBaseArgs } from './config'
+import { buildBaseArgs, ytdlpSpawnEnv } from './config'
 
 /**
  * YouTube RSS 订阅源：补全 flat-playlist 拿不到的播放量和精确发布时间。
@@ -85,7 +85,7 @@ function fetchVideoListViaYtdlp(url: string, limit = 30, proxy?: string): Promis
       ...buildBaseArgs(proxy),
       cleanUrl,
     ]
-    const proc = spawn(getYtdlpPath(), args)
+    const proc = spawn(getYtdlpPath(), args, { env: ytdlpSpawnEnv() })
     let stdout = ''
     let stderr = ''
     let settled = false
