@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   Button, Input, Table, Tag, Tooltip, Empty, message, Segmented, Progress,
 } from 'antd'
@@ -11,33 +11,19 @@ import {
   ClearOutlined,
   CloseOutlined,
   ThunderboltOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/settingsStore'
+import {
+  useTranscribeStore,
+  runTranscribeQueue,
+  type TranscribeTask,
+} from '../../store/transcribeStore'
 import { genTaskId } from '../../utils/id'
-import { storageGet, storageSet } from '../../utils/storage'
 import { formatDuration } from '../../utils/format'
-import { friendlyError } from '../../../shared/errorTranslator'
 
 // ────────── 类型 ──────────
-
-// 注意：此处 TranscribeStatus 与 shared/types.ts 的 TaskStatus 语义不同，特意区分命名
-type TranscribeStatus = 'pending' | 'processing' | 'completed' | 'failed'
-
-interface TranscribeTask {
-  id: string
-  title: string
-  sourceType: 'url' | 'file'
-  sourcePath: string       // URL 或本地文件路径
-  addedAt: number
-  duration?: number        // 秒
-  status: TranscribeStatus
-  progress: number         // 0-100（URL 任务：下载 0-40，转录 40-100）
-  stage?: 'downloading' | 'transcribing'   // URL 任务的两阶段
-  speed?: string            // 下载阶段：实时速度（如 6.2MiB/s）
-  lastLine?: string         // 转录阶段：whisper 最新输出行（含时间戳，可见"正转到哪句"）
-  outputPath?: string      // 生成的 .srt 路径
-  errorMessage?: string
-}
+// 任务类型与执行循环在 store/transcribeStore.ts（模块级，切页不中断转录）
 
 /** 从 whisper 输出行提取时间戳片段，如 "[00:12:34.000 --> 00:12:38.400] 文字" → "00:12:34" */
 function extractWhisperTimestamp(line: string): string | null {
@@ -89,25 +75,14 @@ const Transcription: React.FC = () => {
   const [urlText, setUrlText] = useState('')
   const [filter, setFilter] = useState<FilterStatus>('all')
 
-  // 任务列表持久化到 localStorage
-  const STORAGE_KEY = 'vd_transcribe_tasks'
-  const [tasks, setTasks] = useState<TranscribeTask[]>(() => {
-    try {
-      const parsed = storageGet<TranscribeTask[]>(STORAGE_KEY, [])
-      // 切页时正在处理中的任务，主进程已经被中断，标记为失败
-      return parsed.map(t => t.status === 'processing'
-        ? { ...t, status: 'failed' as TranscribeStatus, errorMessage: '页面切换导致中断，请重新转录' }
-        : t)
-    } catch { return [] }
-  })
-
-  // tasks 变化时自动保存
-  useEffect(() => {
-    storageSet(STORAGE_KEY, tasks)
-  }, [tasks])
+  // 任务队列在模块级 store（切页/切 Tab 不中断转录，localStorage 持久化在 store 内）
+  const tasks = useTranscribeStore(s => s.tasks)
+  const addTasks = useTranscribeStore(s => s.addTasks)
+  const removeTask = useTranscribeStore(s => s.removeTask)
+  const clearAllTasks = useTranscribeStore(s => s.clearAll)
+  const retryTask = useTranscribeStore(s => s.retryTask)
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
-  const processingRef = useRef(false)
 
   // ── 文件选择 / 拖拽 ──
   const [pendingFiles, setPendingFiles] = useState<string[]>([])
@@ -174,7 +149,7 @@ const Transcription: React.FC = () => {
       status: 'pending',
       progress: 0,
     }))
-    setTasks(prev => [...prev, ...newTasks])
+    addTasks(newTasks)
     setUrlText('')
     message.success(`已添加 ${newTasks.length} 个任务`)
   }
@@ -199,25 +174,14 @@ const Transcription: React.FC = () => {
       status: 'pending',
       progress: 0,
     }))
-    setTasks(prev => [...prev, ...newTasks])
+    addTasks(newTasks)
     setPendingFiles([])
     message.success(`已添加 ${newTasks.length} 个任务到队列`)
   }
 
   // ── 开始转录 ──
 
-  const handleStart = useCallback(async () => {
-    const whisper = appSettings.whisper
-    if (!whisper?.executablePath) {
-      message.error('请先到「设置 → 字幕设置」配置 Whisper 可执行文件路径')
-      return
-    }
-    if (!whisper?.modelPath) {
-      message.error('请先到「设置 → 字幕设置」配置 Whisper 模型文件路径')
-      return
-    }
-    if (processingRef.current) return
-
+  const handleStart = useCallback(() => {
     // 自动把待提交的文件 / URL 转换为任务（省掉手动「添加到队列」步骤）
     const autoFromFiles: TranscribeTask[] = pendingFiles.map(filePath => ({
       id: genTaskId(),
@@ -242,136 +206,38 @@ const Transcription: React.FC = () => {
       }))
     }
     if (autoFromFiles.length || autoFromUrls.length) {
-      setTasks(prev => [...prev, ...autoFromFiles, ...autoFromUrls])
+      addTasks([...autoFromFiles, ...autoFromUrls])
       setPendingFiles([])
       setUrlText('')
     }
 
-    processingRef.current = true
-
-    // 包含刚加入的任务一起处理
-    const allPending = [...tasks.filter(t => t.status === 'pending'), ...autoFromFiles, ...autoFromUrls]
-    if (!allPending.length) { message.info('没有待处理的任务'); processingRef.current = false; return }
-    const pending = allPending
-
-    for (const task of pending) {
-      let videoPath = task.sourcePath
-      const isUrl = task.sourceType === 'url'
-
-      // ── URL 任务：阶段一，先用 yt-dlp 提取音频到本地（进度映射 0-40%）──
-      if (isUrl) {
-        setTasks(prev => prev.map(t => t.id === task.id
-          ? { ...t, status: 'processing', progress: 0, stage: 'downloading' as const }
-          : t
-        ))
-        const baseDir = appSettings.downloadPath || await window.api.getDownloadsPath().catch(() => '')
-        if (!baseDir) {
-          setTasks(prev => prev.map(t => t.id === task.id
-            ? { ...t, status: 'failed', errorMessage: '无法确定下载目录，请到设置里指定' }
-            : t
-          ))
-          continue
-        }
-        const unsubDl = window.api.onDownloadProgress((p) => {
-          if (p.taskId === task.id) {
-            setTasks(prev => prev.map(t => t.id === task.id
-              ? { ...t, progress: Math.round(p.progress * 0.4), speed: p.speed }
-              : t
-            ))
-          }
-        })
-        try {
-          const dl = await window.api.downloadVideo({
-            url: task.sourcePath,
-            taskId: task.id,
-            audioOnly: true,
-            outputPath: `${baseDir}/transcribe-audio/%(title).80s.%(ext)s`,
-          })
-          unsubDl()
-          if (dl.status !== 'success' || !dl.data) {
-            setTasks(prev => prev.map(t => t.id === task.id
-              ? { ...t, status: 'failed', errorMessage: `音频下载失败：${friendlyError(dl.errorMessage || '')}` }
-              : t
-            ))
-            continue
-          }
-          videoPath = dl.data
-          // 下载完成：标题换成真实文件名，进入转录阶段
-          setTasks(prev => prev.map(t => t.id === task.id
-            ? { ...t, title: shortPath(videoPath), stage: 'transcribing' as const, progress: 40 }
-            : t
-          ))
-        } catch (err: unknown) {
-          unsubDl()
-          setTasks(prev => prev.map(t => t.id === task.id
-            ? { ...t, status: 'failed', errorMessage: `音频下载失败：${String(err)}` }
-            : t
-          ))
-          continue
-        }
-      } else {
-        setTasks(prev => prev.map(t => t.id === task.id
-          ? { ...t, status: 'processing', progress: 0, stage: 'transcribing' as const }
-          : t
-        ))
-      }
-
-      // ── 阶段二：Whisper 转录（URL 任务进度映射 40-100%，本地文件 0-100%）──
-      const unsub = window.api.onTranscribeProgress((p) => {
-        if (p.taskId === task.id) {
-          setTasks(prev => prev.map(t => t.id === task.id
-            ? {
-                ...t,
-                progress: isUrl ? 40 + Math.round(p.progress * 0.6) : Math.round(p.progress),
-                lastLine: p.lastLine ?? t.lastLine,
-              }
-            : t
-          ))
-        }
-      })
-
-      try {
-        const result = await window.api.transcribeVideo({
-          videoPath,
-          config: whisper,
-          taskId: task.id,
-        })
-        unsub()
-        if (result.status === 'success') {
-          setTasks(prev => prev.map(t => t.id === task.id
-            ? { ...t, status: 'completed', progress: 100, outputPath: result.data?.srtPath }
-            : t
-          ))
-        } else {
-          setTasks(prev => prev.map(t => t.id === task.id
-            ? { ...t, status: 'failed', errorMessage: result.errorMessage || '转录失败' }
-            : t
-          ))
-        }
-      } catch (err: unknown) {
-        unsub()
-        setTasks(prev => prev.map(t => t.id === task.id
-          ? { ...t, status: 'failed', errorMessage: String(err) }
-          : t
-        ))
-      }
+    // 执行循环在模块级（store/transcribeStore.ts）：切页/切 Tab 不中断
+    const r = runTranscribeQueue()
+    if (!r.started) {
+      message.warning(r.reason)
+    } else {
+      message.success('已开始转录（切换页面不会中断）')
     }
-
-    processingRef.current = false
-    message.success('所有任务处理完成')
-  }, [tasks, appSettings.whisper, pendingFiles, urlText, tab])
+  }, [pendingFiles, urlText, tab, addTasks])
 
   // ── 操作 ──
 
   const handleRemove = (id: string) => {
-    setTasks(prev => prev.filter(t => t.id !== id))
+    removeTask(id)
     setSelectedRowKeys(prev => prev.filter(k => k !== id))
   }
 
   const handleClear = () => {
-    setTasks([])
+    clearAllTasks()
     setSelectedRowKeys([])
     setUrlText('')
+  }
+
+  // 失败任务一键重试：来源（URL/文件路径）还在任务里，无需重新输入
+  const handleRetry = (id: string) => {
+    retryTask(id)
+    const r = runTranscribeQueue()
+    if (!r.started) message.warning(r.reason)
   }
 
   const handleOpenOutput = async (path?: string) => {
@@ -433,6 +299,11 @@ const Transcription: React.FC = () => {
       width: 170,
       render: (_: unknown, task: TranscribeTask) => (
         <div style={{ display: 'flex', gap: 6 }}>
+          {task.status === 'failed' && (
+            <Tooltip title="重新转录（保留原链接/文件，已下载的音频会秒过）">
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => handleRetry(task.id)}>重试</Button>
+            </Tooltip>
+          )}
           {task.status === 'completed' && task.outputPath && (
             <>
               <Tooltip title="打开字幕文件">
