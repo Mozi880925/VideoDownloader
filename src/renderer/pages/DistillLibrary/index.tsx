@@ -6,6 +6,8 @@ import {
   EyeOutlined,
   PauseCircleOutlined,
   ReloadOutlined,
+  SendOutlined,
+  LinkOutlined,
 } from '@ant-design/icons'
 import type { DistilledArticleMeta, DistillStatus } from '@shared/types'
 import PageTitle from '../../components/PageTitle'
@@ -33,6 +35,7 @@ const DistillLibrary: React.FC = () => {
   const [articles, setArticles] = useState<DistilledArticleMeta[]>([])
   const [loading, setLoading] = useState(false)
   const [viewId, setViewId] = useState<string | null>(null)
+  const [deliveringId, setDeliveringId] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -87,6 +90,26 @@ const DistillLibrary: React.FC = () => {
   const handleExport = async (a: DistilledArticleMeta) => {
     const saved = await exportArticleMarkdown(a.id, a.title)
     if (saved) message.success(`已导出:${saved}`)
+  }
+
+  const handleDeliverFeishu = async (a: DistilledArticleMeta) => {
+    if (a.feishuUrl) {
+      window.api.openExternal(a.feishuUrl).catch(() => {})
+      return
+    }
+    setDeliveringId(a.id)
+    try {
+      const r = await window.api.feishuCreateDoc(a.id)
+      if (r.status === 'success') {
+        message.success('已交付飞书文档')
+        setArticles((prev) => prev.map((x) => (x.id === a.id ? { ...x, feishuUrl: r.data.url } : x)))
+        window.api.openExternal(r.data.url).catch(() => {})
+      } else {
+        message.error(r.errorMessage || '交付失败')
+      }
+    } finally {
+      setDeliveringId(null)
+    }
   }
 
   return (
@@ -173,13 +196,21 @@ const DistillLibrary: React.FC = () => {
           {
             title: '操作',
             key: 'actions',
-            width: 170,
+            width: 210,
             render: (_v, a) => (
               <div style={{ display: 'flex', gap: 2 }}>
                 {a.status === 'done' && (
                   <>
                     <Button type="text" size="small" icon={<EyeOutlined />} title="查看" onClick={() => setViewId(a.id)} />
                     <Button type="text" size="small" icon={<DownloadOutlined />} title="导出 Markdown" onClick={() => handleExport(a)} />
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={a.feishuUrl ? <LinkOutlined /> : <SendOutlined />}
+                      loading={deliveringId === a.id}
+                      title={a.feishuUrl ? '打开飞书文档' : '交付飞书文档'}
+                      onClick={() => handleDeliverFeishu(a)}
+                    />
                   </>
                 )}
                 {a.status === 'running' && (

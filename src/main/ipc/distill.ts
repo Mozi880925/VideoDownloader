@@ -1,5 +1,6 @@
 import { handle, sendToAll } from './typed'
 import { startDistill, retryDistill, cancelDistill } from '../services/distill'
+import { testFeishu, createFeishuDoc } from '../services/feishu'
 import {
   listDistilledArticles,
   getDistilledArticle,
@@ -48,5 +49,18 @@ export function registerDistillHandlers(): void {
 
   handle('distill:delete', (_e, articleId) => {
     deleteDistilledArticle(articleId)
+  })
+
+  // ---- 飞书文档交付 ----
+  handle('feishu:test', (_e, cfg) => testFeishu(cfg))
+
+  handle('feishu:create-doc', async (_e, articleId) => {
+    try {
+      const url = await createFeishuDoc(articleId)
+      return { status: 'success' as const, data: { url } }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { status: 'failed' as const, errorMessage: msg }
+    }
   })
 }

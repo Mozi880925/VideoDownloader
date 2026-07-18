@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import PageTitle from '../../components/PageTitle'
-import type { LlmConfig } from '@shared/types'
+import type { LlmConfig, FeishuConfig } from '@shared/types'
 import { Card, Form, Select, Switch, Button, message, Input, InputNumber, Tag, Spin, Segmented, Divider } from 'antd'
-import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined, RobotOutlined, ApiOutlined } from '@ant-design/icons'
+import { FolderOpenOutlined, FileTextOutlined, SafetyCertificateOutlined, LoginOutlined, SyncOutlined, CheckCircleOutlined, RobotOutlined, ApiOutlined, SendOutlined } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/settingsStore'
 
 const SUB_LANG_OPTIONS = [
@@ -48,6 +48,8 @@ const Settings: React.FC = () => {
   const [ytApiTesting, setYtApiTesting] = useState(false)
   const [ytApiTestResult, setYtApiTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [ytQuota, setYtQuota] = useState<{ used: number; limit: number } | null>(null)
+  const [feishuTesting, setFeishuTesting] = useState(false)
+  const [feishuTestResult, setFeishuTestResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   // 切到「AI 与数据源」模块时拉取当日配额用量
   useEffect(() => {
@@ -190,6 +192,23 @@ const Settings: React.FC = () => {
       if (r.ok) message.success('连接成功')
     } finally {
       setLlmTesting(false)
+    }
+  }
+
+  const handleTestFeishu = async () => {
+    const feishu = form.getFieldValue('feishu') as FeishuConfig | undefined
+    if (!feishu?.appId?.trim() || !feishu?.appSecret?.trim()) {
+      message.warning('请先填写 App ID 和 App Secret')
+      return
+    }
+    setFeishuTesting(true)
+    setFeishuTestResult(null)
+    try {
+      const r = await window.api.feishuTest(feishu)
+      setFeishuTestResult(r)
+      if (r.ok) message.success('连接成功')
+    } finally {
+      setFeishuTesting(false)
     }
   }
 
@@ -452,6 +471,42 @@ const Settings: React.FC = () => {
                 {llmTestResult && (
                   <span style={{ marginLeft: 12, fontSize: 12, color: llmTestResult.ok ? '#52c41a' : '#ff4d4f' }}>
                     {llmTestResult.message}
+                  </span>
+                )}
+              </Form.Item>
+            </Card>
+
+            <Card bordered={false} style={{ ...cardStyle, marginTop: 24 }}>
+              <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>
+                <SendOutlined style={{ marginRight: 6, color: '#3370ff' }} />
+                飞书交付
+              </div>
+
+              <Form.Item
+                label="App ID"
+                name={['feishu', 'appId']}
+                extra={
+                  <span>
+                    提纯稿一键交付为飞书云文档。需自建飞书开放平台应用（open.feishu.cn → 创建企业自建应用），
+                    在「权限管理」开通 <code>drive:drive</code>、<code>docx:document</code> 相关权限并发布版本，
+                    在「凭证与基础信息」获取 App ID / App Secret。
+                  </span>
+                }
+              >
+                <Input placeholder="cli_..." autoComplete="off" />
+              </Form.Item>
+
+              <Form.Item label="App Secret" name={['feishu', 'appSecret']}>
+                <Input.Password placeholder="App Secret" autoComplete="off" />
+              </Form.Item>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <Button icon={<ApiOutlined />} loading={feishuTesting} onClick={handleTestFeishu}>
+                  测试连接
+                </Button>
+                {feishuTestResult && (
+                  <span style={{ marginLeft: 12, fontSize: 12, color: feishuTestResult.ok ? '#52c41a' : '#ff4d4f' }}>
+                    {feishuTestResult.message}
                   </span>
                 )}
               </Form.Item>

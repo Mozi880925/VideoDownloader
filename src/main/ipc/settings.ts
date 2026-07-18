@@ -6,6 +6,7 @@ import { applySessionProxy, buildProxyUrl } from '../services/network'
 import { setLlmRuntimeConfig } from '../services/llm'
 import { setAutoAnalyzeEnabled } from '../services/autoAnalysis'
 import { setYoutubeApiKey } from '../services/youtubeApi'
+import { setFeishuRuntimeConfig } from '../services/feishu'
 import { startScheduler } from '../services/subscription'
 
 export function registerSettingsHandlers(): void {
@@ -39,6 +40,9 @@ export function bootstrapSettingsConsumers(): void {
 
     // YouTube Data API
     setYoutubeApiKey(s.youtubeApiKey?.trim() || null)
+
+    // 飞书文档交付
+    setFeishuRuntimeConfig(s.feishu ?? null)
 
     // 订阅定时检查（startScheduler 幂等，间隔未变不重启）
     startScheduler(s.subscriptionCheckInterval || '6h', (results) => {
