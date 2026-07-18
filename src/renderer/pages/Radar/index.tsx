@@ -33,6 +33,50 @@ const Radar: React.FC = () => {
   // ── 配额 ──
   const [quota, setQuota] = useState<{ used: number; limit: number } | null>(null)
 
+  // ── 加入对标（雷达 → 频道订阅）──
+  const [subscribingId, setSubscribingId] = useState<string | null>(null)
+  const [subscribedIds, setSubscribedIds] = useState<Set<string>>(new Set())
+
+  /** 雷达频道 → 订阅可用的频道 URL（与 ChannelTable.openChannel 同构造） */
+  const channelUrl = (c: RadarChannel) =>
+    c.customUrl ? `https://www.youtube.com/${c.customUrl}` : `https://www.youtube.com/channel/${c.channelId}`
+
+  // mount 时用现有订阅列表预填「已订阅」标记（两种 URL 形态精确比对；
+  // 跨形态漏检由 subAdd 的「已存在」报错兜底）
+  useEffect(() => {
+    window.api.subList().then((subs) => {
+      const subUrls = new Set(subs.map((s) => s.url))
+      setSubscribedIds((prev) => {
+        const next = new Set(prev)
+        for (const c of channels) {
+          if (subUrls.has(`https://www.youtube.com/${c.customUrl}`) ||
+              subUrls.has(`https://www.youtube.com/channel/${c.channelId}`)) {
+            next.add(c.channelId)
+          }
+        }
+        return next
+      })
+    }).catch(() => {})
+  }, [channels])
+
+  const handleSubscribe = useCallback(async (c: RadarChannel) => {
+    setSubscribingId(c.channelId)
+    try {
+      const r = await window.api.subAdd(channelUrl(c), c.title)
+      if (r.status === 'success') {
+        setSubscribedIds((prev) => new Set(prev).add(c.channelId))
+        message.success(`已加入对标：${r.data.name}，可在「频道订阅」页查看`)
+      } else if (r.errorMessage?.includes('已存在')) {
+        setSubscribedIds((prev) => new Set(prev).add(c.channelId))
+        message.info('该频道已在订阅列表中')
+      } else {
+        message.error(r.errorMessage || '加入对标失败')
+      }
+    } finally {
+      setSubscribingId(null)
+    }
+  }, [message])
+
   const refreshKeywords = useCallback(async () => {
     setKeywords(await window.api.radarListKeywords())
   }, [])
@@ -266,7 +310,14 @@ const Radar: React.FC = () => {
           </span>
         </div>
 
-        <ChannelTable channels={channels} loading={loadingChannels} onRemove={handleRemoveChannel} />
+        <ChannelTable
+          channels={channels}
+          loading={loadingChannels}
+          onRemove={handleRemoveChannel}
+          onSubscribe={handleSubscribe}
+          subscribingId={subscribingId}
+          subscribedIds={subscribedIds}
+        />
       </Card>
     </div>
   )

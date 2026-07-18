@@ -4,6 +4,7 @@ import { Button, Empty, Segmented, Select, Space, Spin, Tag, Tooltip } from 'ant
 import {
   AppstoreOutlined,
   BarChartOutlined,
+  BulbOutlined,
   CheckOutlined,
   ClockCircleOutlined,
   DownloadOutlined,
@@ -85,6 +86,7 @@ interface VideoItemProps {
   onDismiss: (videoId: string, channelId: string) => void
   onAnalyze: (v: NewVideoItem) => void
   onTranscript: (v: NewVideoItem) => void
+  onSaveTopic: (v: NewVideoItem) => void
 }
 
 /** 日增展示：≥100 才显示，避免噪音 */
@@ -93,7 +95,7 @@ function formatGrowth(growth?: number): string {
   return `↑${formatViewCount(growth)}/天`
 }
 
-const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
+const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channelName, onDownload, onDismiss, onAnalyze, onTranscript, onSaveTopic }) => {
   const isNew = v.status === 'new'
   return (
     <div
@@ -206,6 +208,9 @@ const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channelN
         <Tooltip title="提取文案（免下载）">
           <Button size="small" type="text" icon={<FileTextOutlined />} onClick={() => onTranscript(v)} />
         </Tooltip>
+        <Tooltip title="存为选题">
+          <Button size="small" type="text" icon={<BulbOutlined />} style={{ color: '#faad14' }} onClick={() => onSaveTopic(v)} />
+        </Tooltip>
         <Tooltip title="加入批量下载">
           <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => onDownload(v.url)} />
         </Tooltip>
@@ -228,7 +233,7 @@ const VideoRow: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channelN
   )
 }
 
-const VideoCard: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channelName, onDownload, onDismiss, onAnalyze, onTranscript }) => {
+const VideoCard: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channelName, onDownload, onDismiss, onAnalyze, onTranscript, onSaveTopic }) => {
   const isNew = v.status === 'new'
   return (
     <div
@@ -328,6 +333,9 @@ const VideoCard: React.FC<VideoItemProps> = ({ v, hot, analyzed, growth, channel
           <Tooltip title="提取文案（免下载）">
             <Button size="small" type="text" icon={<FileTextOutlined />} onClick={() => onTranscript(v)} />
           </Tooltip>
+          <Tooltip title="存为选题">
+            <Button size="small" type="text" icon={<BulbOutlined />} style={{ color: '#faad14' }} onClick={() => onSaveTopic(v)} />
+          </Tooltip>
           <Tooltip title="加入批量下载">
             <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => onDownload(v.url)} />
           </Tooltip>
@@ -371,6 +379,7 @@ interface VideoFeedProps {
   onCheck: () => void
   onAnalyzeVideo: (v: NewVideoItem) => void
   onTranscriptVideo: (v: NewVideoItem) => void
+  onSaveTopicVideo: (v: NewVideoItem) => void
   onDownloadVideo: (url: string) => void
   onDownloadAllNew: () => void
   onMarkAllRead: () => void
@@ -401,6 +410,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
   onCheck,
   onAnalyzeVideo,
   onTranscriptVideo,
+  onSaveTopicVideo,
   onDownloadVideo,
   onDownloadAllNew,
   onMarkAllRead,
@@ -539,6 +549,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 onDismiss={onDismiss}
                 onAnalyze={onAnalyzeVideo}
                 onTranscript={onTranscriptVideo}
+                onSaveTopic={onSaveTopicVideo}
               />
             ))}
           </div>
@@ -556,6 +567,7 @@ const VideoFeed: React.FC<VideoFeedProps> = ({
                 onDismiss={onDismiss}
                 onAnalyze={onAnalyzeVideo}
                 onTranscript={onTranscriptVideo}
+                onSaveTopic={onSaveTopicVideo}
               />
             ))}
           </div>

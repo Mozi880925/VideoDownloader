@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Segmented } from 'antd'
 import PageTitle from '../../components/PageTitle'
 import { PURPLE_GRADIENT } from '../../theme/tokens'
+import { useNavStore } from '../../store/navStore'
 import Transcription from '../Transcription'
 import SubtitleExtract from '../SubtitleExtract'
 import DistillLibrary from '../DistillLibrary'
@@ -26,6 +27,16 @@ const TAB_SUBTITLE: Record<TabKey, string> = {
 
 const TranscriptHub: React.FC = () => {
   const [tab, setTab] = useState<TabKey>('transcribe')
+
+  // 消费跨页 Tab 定位信号（如「AI 提纯」发起后跳转到提纯稿库 Tab）
+  const hubTab = useNavStore((s) => s.hubTab)
+  const clearHubTab = useNavStore((s) => s.clearHubTab)
+  useEffect(() => {
+    if (hubTab) {
+      setTab(hubTab)
+      clearHubTab()
+    }
+  }, [hubTab, clearHubTab])
 
   return (
     <div style={{ padding: 24, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>

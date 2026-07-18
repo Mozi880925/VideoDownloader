@@ -14,6 +14,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons'
 import { useSettingsStore } from '../../store/settingsStore'
+import { useNavStore } from '../../store/navStore'
 import {
   useTranscribeStore,
   runTranscribeQueue,
@@ -321,7 +322,15 @@ const Transcription: React.FC = () => {
                       title: task.title,
                     })
                     if (r.status === 'success') {
-                      message.success('已开始 AI 提纯，可到「提纯稿库」查看进度', 5)
+                      message.success(
+                        <span>
+                          已开始 AI 提纯，
+                          <a onClick={() => useNavStore.getState().gotoTranscriptHub('library')}>
+                            去提纯稿库查看 →
+                          </a>
+                        </span>,
+                        6,
+                      )
                     } else {
                       message.error(r.errorMessage || '提纯启动失败')
                     }

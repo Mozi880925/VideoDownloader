@@ -1,7 +1,8 @@
 import React from 'react'
 import type { NewVideoItem, VideoTranscript } from '@shared/types'
-import { Button, Modal, Spin, Tag, message } from 'antd'
+import { App, Button, Modal, Spin, Tag } from 'antd'
 import { CopyOutlined, FileTextOutlined, ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { useNavStore } from '../../store/navStore'
 
 // ────────── 视频文案弹窗（免下载提字幕 → 纯文本） ──────────
 
@@ -22,6 +23,8 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({
   onClose,
   onRetry,
 }) => {
+  const { message } = App.useApp()
+
   const copyAll = async () => {
     if (!transcript?.text) return
     try {
@@ -90,7 +93,15 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({
                       title: video.title,
                     })
                     if (r.status === 'success') {
-                      message.success('已开始 AI 提纯，可到「字幕和转录 → 提纯稿库」查看进度', 5)
+                      message.success(
+                        <span>
+                          已开始 AI 提纯，
+                          <a onClick={() => { onClose(); useNavStore.getState().gotoTranscriptHub('library') }}>
+                            去提纯稿库查看 →
+                          </a>
+                        </span>,
+                        6,
+                      )
                     } else {
                       message.error(r.errorMessage || '提纯启动失败')
                     }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Modal, Button, Space, Input, Typography, message, Empty, Tooltip } from 'antd'
 import { CopyOutlined, FileTextOutlined, SearchOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import type { DistillSourceType } from '@shared/types'
+import { useNavStore } from '../../store/navStore'
 
 interface SrtEntry {
   index: number
@@ -122,7 +123,15 @@ const SrtViewer: React.FC<Props> = ({ open, srtPath, title, sourceType = 'whispe
             onClick={async () => {
               const r = await window.api.distillStart({ sourceType, srtPath, title: title || '字幕文稿' })
               if (r.status === 'success') {
-                messageApi.success('已开始 AI 提纯，可到「字幕和转录 → 提纯稿库」查看进度', 5)
+                messageApi.success(
+                  <span>
+                    已开始 AI 提纯，
+                    <a onClick={() => { onClose(); useNavStore.getState().gotoTranscriptHub('library') }}>
+                      去提纯稿库查看 →
+                    </a>
+                  </span>,
+                  6,
+                )
               } else {
                 messageApi.error(r.errorMessage || '提纯启动失败')
               }

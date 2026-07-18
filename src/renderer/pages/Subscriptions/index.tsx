@@ -6,6 +6,7 @@ import { ClockCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import { useBatchStore } from '../../store/batchStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { storageGet, storageSet } from '../../utils/storage'
+import { genTopicId } from '../../utils/id'
 import VideoListPicker from '../../components/VideoListPicker'
 import type { CheckInterval } from '../../../shared/types'
 import ChannelList from './ChannelList'
@@ -333,6 +334,28 @@ const Subscriptions: React.FC = () => {
     message.success('已发送到批量下载')
   }
 
+  // 视频一键沉淀为选题（防重：同 ref_url 已存在则提示）
+  const handleSaveTopic = async (v: NewVideoItem) => {
+    const existing = await window.api.topicList()
+    if (existing.some((t) => t.ref_url === v.url)) {
+      message.info('该视频已在选题库中')
+      return
+    }
+    const now = Date.now()
+    await window.api.topicInsert({
+      id: genTopicId(),
+      title: v.title,
+      notes: `来自订阅频道「${channelNames[v.channelId] ?? ''}」`,
+      ref_url: v.url,
+      ref_title: v.title,
+      ref_thumbnail: v.thumbnail,
+      status: 'pending',
+      created_at: now,
+      updated_at: now,
+    })
+    message.success('已存入选题库')
+  }
+
   // ── AI 分析三条流程（状态 + 逻辑在各自 hook 内聚）──
   const onAnalyzed = useCallback((channelId: string, videoId: string) => {
     setAnalyzedKeys((prev) => new Set(prev).add(`${channelId}|${videoId}`))
@@ -422,6 +445,7 @@ const Subscriptions: React.FC = () => {
           onCheck={() => (feedMode === 'all' ? handleCheckAll() : handleCheckOne(selectedChannelId))}
           onAnalyzeVideo={titleAnalysis.run}
           onTranscriptVideo={transcript.run}
+          onSaveTopicVideo={handleSaveTopic}
           onDownloadVideo={handleDownloadVideo}
           onDownloadAllNew={handleDownloadAllNew}
           onMarkAllRead={handleMarkAllRead}

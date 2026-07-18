@@ -1,6 +1,6 @@
 import React from 'react'
 import { Table, Button, Tag, Tooltip, Popconfirm, Empty } from 'antd'
-import { DeleteOutlined, LinkOutlined } from '@ant-design/icons'
+import { DeleteOutlined, LinkOutlined, PlusOutlined, CheckOutlined } from '@ant-design/icons'
 import type { RadarChannel } from '@shared/types'
 import Thumbnail from '../../components/Thumbnail'
 import { PRIMARY } from '../../theme/tokens'
@@ -26,9 +26,13 @@ interface Props {
   channels: RadarChannel[]
   loading: boolean
   onRemove: (channelId: string) => void
+  /** 加入对标（频道订阅）；subAdd 会拉一次视频列表，需数秒 */
+  onSubscribe: (channel: RadarChannel) => void
+  subscribingId: string | null
+  subscribedIds: Set<string>
 }
 
-const ChannelTable: React.FC<Props> = ({ channels, loading, onRemove }) => {
+const ChannelTable: React.FC<Props> = ({ channels, loading, onRemove, onSubscribe, subscribingId, subscribedIds }) => {
   const openChannel = (c: RadarChannel) => {
     const url = c.customUrl
       ? `https://www.youtube.com/${c.customUrl}`
@@ -120,11 +124,31 @@ const ChannelTable: React.FC<Props> = ({ channels, loading, onRemove }) => {
         {
           title: '',
           key: 'actions',
-          width: 50,
+          width: 130,
           render: (_v, c) => (
-            <Popconfirm title="从频道库移除？" onConfirm={() => onRemove(c.channelId)} okText="移除" cancelText="取消">
-              <Button type="text" danger size="small" icon={<DeleteOutlined />} title="移除频道" />
-            </Popconfirm>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {subscribedIds.has(c.channelId) ? (
+                <Button type="link" size="small" icon={<CheckOutlined />} disabled>
+                  已订阅
+                </Button>
+              ) : (
+                <Tooltip title="加入频道订阅作为对标（会拉取一次最新视频，约数秒）">
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<PlusOutlined />}
+                    loading={subscribingId === c.channelId}
+                    disabled={!!subscribingId}
+                    onClick={() => onSubscribe(c)}
+                  >
+                    对标
+                  </Button>
+                </Tooltip>
+              )}
+              <Popconfirm title="从频道库移除？" onConfirm={() => onRemove(c.channelId)} okText="移除" cancelText="取消">
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} title="移除频道" />
+              </Popconfirm>
+            </div>
           ),
         },
       ]}
